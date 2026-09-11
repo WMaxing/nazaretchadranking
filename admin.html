@@ -4,7 +4,15 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Nazaret Chad Ranking — Admin</title>
-<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js">
+$('pollStart').onclick=startNewPoll;
+$('pollSave').onclick=savePollSettings;
+$('pollResume').onclick=()=>setPollActive(true);
+$('pollClose').onclick=()=>setPollActive(false);
+$('pollReset').onclick=resetPollVotes;
+$('pollDelete').onclick=deletePoll;
+
+</script>
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-database-compat.js"></script>
 <style>
@@ -12,6 +20,20 @@
 *{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at top,#1e0c38 0,#08070c 55%);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;min-height:100vh}
 .wrap{max-width:900px;margin:auto;padding:24px 16px 50px}.top{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:18px}.brand{font-weight:900;letter-spacing:.5px}.links{display:flex;gap:8px;flex-wrap:wrap}.btn,.link{border:0;border-radius:10px;padding:10px 13px;background:linear-gradient(135deg,#a855f7,#6b21a8);color:#fff;font-weight:800;cursor:pointer;text-decoration:none}.btn.secondary{background:rgba(255,255,255,.08)}.btn.danger{background:#b91c1c}.card{background:rgba(18,17,26,.94);border:1px solid rgba(168,85,247,.25);border-radius:16px;padding:18px;margin-bottom:16px;box-shadow:0 10px 30px rgba(0,0,0,.25)}h1,h2{margin:0 0 10px}h1{font-size:1.4rem}h2{font-size:1.05rem}.muted{color:var(--sub);font-size:.85rem}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.field{display:flex;flex-direction:column;gap:6px}.field.full{grid-column:1/-1}label{font-size:.78rem;color:var(--sub);font-weight:700}input,textarea,select{width:100%;background:#090811;border:1px solid rgba(255,255,255,.12);border-radius:9px;padding:10px;color:#fff;outline:none}textarea{min-height:90px;resize:vertical}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.table{display:flex;flex-direction:column;gap:8px}.row{display:grid;grid-template-columns:50px 1fr auto;align-items:center;gap:10px;background:rgba(255,255,255,.035);border-radius:11px;padding:9px}.thumb{width:42px;height:42px;border-radius:8px;object-fit:cover;background:#222}.rank{font-weight:900;color:var(--gold);text-align:center}.rowname{font-weight:800}.rowmeta{font-size:.72rem;color:var(--sub)}.small{padding:7px 9px;font-size:.75rem}.status{padding:10px;border-radius:10px;background:rgba(168,85,247,.08);color:var(--light);font-size:.82rem;margin-bottom:12px}.hidden{display:none!important}.login{max-width:420px;margin:12vh auto}.notice{font-size:.78rem;color:var(--sub);line-height:1.45}.statbar{display:flex;gap:10px;flex-wrap:wrap}.stat{background:rgba(255,255,255,.04);padding:10px 12px;border-radius:10px;min-width:120px}.stat b{display:block;font-size:1.15rem}.checkbox{display:flex;align-items:center;gap:8px}.checkbox input{width:auto}
 @media(max-width:650px){.grid{grid-template-columns:1fr}.row{grid-template-columns:40px 1fr}.row .actions{grid-column:1/-1}}
+
+.poll-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.poll-box{background:rgba(168,85,247,.05);border:1px solid rgba(168,85,247,.18);border-radius:12px;padding:12px}
+.poll-box h3{font-size:.9rem;margin:0 0 8px}
+.poll-state{display:inline-flex;align-items:center;gap:6px;padding:6px 9px;border-radius:999px;font-size:.74rem;font-weight:800;background:rgba(255,255,255,.06);color:var(--sub)}
+.poll-state.active{background:rgba(34,197,94,.12);color:#86efac}
+.poll-state.closed{background:rgba(239,68,68,.1);color:#fca5a5}
+.poll-state.none{background:rgba(255,255,255,.05);color:var(--sub)}
+.poll-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.poll-help{font-size:.76rem;color:var(--sub);line-height:1.45;margin-top:8px}
+.poll-vote-row{display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:rgba(255,255,255,.035);border-radius:9px;margin-top:7px}
+.poll-vote-row b{font-size:.9rem}
+@media(max-width:650px){.poll-grid{grid-template-columns:1fr}}
+
 </style>
 </head>
 <body>
@@ -34,20 +56,49 @@
       <div class="actions"><button id="recalc" class="btn">🏆 Przelicz ranking</button><button id="resetVotes" class="btn danger">🔄 Wyzeruj głosy</button><button id="importSeed" class="btn secondary">📥 Importuj startowych 15</button></div>
     </section>
 
+
     <section class="card">
       <h2>📊 Ankieta społeczna</h2>
-      <p class="muted">Wybierz dwóch Chadów i rozpocznij nową ankietę. Każde uruchomienie tworzy nowe ID ankiety, więc stare głosy nie przenoszą się do nowej.</p>
-      <div class="grid" style="margin-top:12px">
-        <div class="field"><label>Chad #1</label><select id="pollCandidate1"></select></div>
-        <div class="field"><label>Chad #2</label><select id="pollCandidate2"></select></div>
-        <div class="field"><label>Miejsce</label><input id="pollTargetRank" type="number" min="1" value="1"></div>
-        <div class="field"><label>Status</label><div id="pollStatus" class="status" style="margin:0">—</div></div>
+      <p class="muted">
+        Tutaj całkowicie sterujesz aktualnym głosowaniem widocznym na stronie głównej.
+        Możesz wybrać dwóch Chadów, rozpocząć nowe głosowanie, wznowić/zakończyć ankietę,
+        zmienić kandydatów bez zerowania wyników albo wyczyścić głosy.
+      </p>
+
+      <div class="poll-box" style="margin-top:12px">
+        <div id="pollStatus" class="poll-state none">⚪ Brak aktywnej ankiety</div>
+        <div class="poll-help" id="pollMeta">Ładowanie konfiguracji ankiety…</div>
       </div>
-      <div class="actions">
-        <button id="startPoll" class="btn">🚀 Rozpocznij nowe głosowanie</button>
-        <button id="closePoll" class="btn danger">⏹️ Zakończ ankietę</button>
+
+      <div class="poll-grid" style="margin-top:12px">
+        <div class="field">
+          <label>Chad #1</label>
+          <select id="pollCandidate1"></select>
+        </div>
+        <div class="field">
+          <label>Chad #2</label>
+          <select id="pollCandidate2"></select>
+        </div>
+        <div class="field">
+          <label>Miejsce w rankingu</label>
+          <input id="pollTargetRank" type="number" min="1" step="1" value="1">
+        </div>
+        <div class="field">
+          <label>ID aktualnego głosowania</label>
+          <input id="pollIdDisplay" type="text" readonly>
+        </div>
       </div>
-      <div id="pollCounts" class="muted" style="margin-top:10px"></div>
+
+      <div class="poll-actions">
+        <button id="pollStart" class="btn">🚀 Rozpocznij nowe głosowanie</button>
+        <button id="pollSave" class="btn secondary">💾 Zapisz ustawienia</button>
+        <button id="pollResume" class="btn secondary">▶️ Wznów</button>
+        <button id="pollClose" class="btn secondary">⏹️ Zakończ</button>
+        <button id="pollReset" class="btn danger">♻️ Resetuj głosy</button>
+        <button id="pollDelete" class="btn danger">🗑️ Usuń ankietę</button>
+      </div>
+
+      <div id="pollResults" style="margin-top:14px"></div>
     </section>
 
     <section class="card">
@@ -72,36 +123,120 @@
 const ADMIN_EMAIL='pokrok1337@gmail.com';
 const firebaseConfig={apiKey:'AIzaSyBIaDH5hBL2Q9m4OUUdPpK_B9Azj92MRc4',authDomain:'nazaretchadranking.firebaseapp.com',databaseURL:'https://nazaretchadranking-default-rtdb.firebaseio.com',projectId:'nazaretchadranking',storageBucket:'nazaretchadranking.firebasestorage.app',messagingSenderId:'183102038861',appId:'1:183102038861:web:b659bbf2a56ef6dc5a0d04'};
 firebase.initializeApp(firebaseConfig);const db=firebase.database(),auth=firebase.auth();
-let editingId=null, chads={}, votes={};
+let editingId=null, chads={}, votes={}, pollConfig={}, pollVotes={};
 const $=id=>document.getElementById(id);
 function msg(t){$('status').textContent=t}
 function clearForm(){editingId=null;$('formTitle').textContent='Dodaj nowego Chada';['name','aura','titlePl','titleEn','img','descPl','descEn'].forEach(id=>$(id).value='');$('locked').checked=false;$('cancel').classList.add('hidden')}
 function fill(c){editingId=c.id;$('formTitle').textContent='Edytuj: '+c.name;$('name').value=c.name||'';$('aura').value=c.aura||'';$('titlePl').value=c.titlePl||'';$('titleEn').value=c.titleEn||'';$('img').value=c.img||'';$('descPl').value=c.descPl||'';$('descEn').value=c.descEn||'';$('locked').checked=!!c.locked;$('cancel').classList.remove('hidden');scrollTo({top:document.body.scrollHeight,behavior:'smooth'})}
 function render(){const arr=Object.keys(chads).map(id=>({id,...chads[id],votes:Number(votes[id] ?? chads[id]?.votes ?? 0)})).sort((a,b)=>(a.rank||999)-(b.rank||999));$('list').innerHTML=arr.length?arr.map(c=>`<div class="row"><div class="rank">#${c.rank||'-'}</div><div style="display:flex;align-items:center;gap:9px"><img class="thumb" src="${esc(c.img||'')}" onerror="this.style.visibility='hidden'"><div><div class="rowname">${esc(c.name||'Bez nazwy')}</div><div class="rowmeta">${c.votes||0} głosów • Aura ${esc(String(c.aura??''))}</div></div></div><div class="actions"><button class="btn small secondary" onclick="fill(chads['${c.id}'])">Edytuj</button><button class="btn small danger" onclick="removeChad('${c.id}')">Usuń</button></div></div>`).join(''):'<div class="muted">Brak Chadów w bazie. Kliknij „Importuj startowych 15”.</div>';$('stats').innerHTML=`<div class="stat"><span class="muted">Chadzi</span><b>${arr.length}</b></div><div class="stat"><span class="muted">Głosów</span><b>${arr.reduce((n,c)=>n+(Number(c.votes)||0),0)}</b></div><div class="stat"><span class="muted">#1</span><b>${esc(arr[0]?.name||'—')}</b></div>`}
+
+function escapeHtml(v){
+  return String(v ?? '').replace(/[&<>'"]/g,x=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[x]));
+}
+function getChadName(id){return chads[id]?.name || id || '—';}
+function pollCandidatesValid(){
+  return pollConfig && pollConfig.candidate1Id && pollConfig.candidate2Id &&
+         pollConfig.candidate1Id !== pollConfig.candidate2Id;
+}
+function populatePollSelectors(){
+  const arr=Object.keys(chads).map(id=>({id,...chads[id]})).sort((a,b)=>(Number(a.rank)||999)-(Number(b.rank)||999));
+  const s1=$('pollCandidate1'), s2=$('pollCandidate2');
+  if(!s1||!s2) return;
+  const options=arr.map(c=>`<option value="${escapeHtml(c.id)}">${escapeHtml(c.name||c.id)} (#${c.rank||'-'})</option>`).join('');
+  const blank='<option value="">— wybierz Chada —</option>';
+  s1.innerHTML=blank+options;
+  s2.innerHTML=blank+options;
+  s1.value=pollConfig.candidate1Id||'';
+  s2.value=pollConfig.candidate2Id||'';
+  $('pollTargetRank').value=Number(pollConfig.targetRank)||1;
+  $('pollIdDisplay').value=pollConfig.pollId||'';
+}
+function renderPollAdmin(){
+  populatePollSelectors();
+  const state=$('pollStatus'), meta=$('pollMeta'), res=$('pollResults');
+  const active=!!pollConfig.active && !!pollConfig.pollId;
+  state.className='poll-state '+(active?'active':(pollConfig.pollId?'closed':'none'));
+  state.textContent=active?'🟢 Ankieta aktywna':(pollConfig.pollId?'🔴 Ankieta zakończona':'⚪ Brak aktywnej ankiety');
+  if(pollConfig.pollId){
+    meta.textContent=`${getChadName(pollConfig.candidate1Id)} vs ${getChadName(pollConfig.candidate2Id)} • miejsce #${Number(pollConfig.targetRank)||1} • ID ${pollConfig.pollId}`;
+    const v1=Number(pollVotes[pollConfig.candidate1Id]||0), v2=Number(pollVotes[pollConfig.candidate2Id]||0);
+    const total=v1+v2;
+    const p1=total?Math.round(v1/total*100):0, p2=total?100-p1:0;
+    res.innerHTML=`
+      <div class="poll-vote-row"><span>${escapeHtml(getChadName(pollConfig.candidate1Id))}</span><b>${v1} (${p1}%)</b></div>
+      <div class="poll-vote-row"><span>${escapeHtml(getChadName(pollConfig.candidate2Id))}</span><b>${v2} (${p2}%)</b></div>
+      <div class="poll-help">Łącznie: <b>${total}</b> głosów</div>`;
+  }else{
+    meta.textContent='Nie utworzono jeszcze ankiety. Wybierz dwóch Chadów i rozpocznij nowe głosowanie.';
+    res.innerHTML='';
+  }
+}
+function readPollForm(){
+  return {
+    candidate1Id:$('pollCandidate1').value,
+    candidate2Id:$('pollCandidate2').value,
+    targetRank:Math.max(1,Number($('pollTargetRank').value)||1)
+  };
+}
+function validatePollForm(data){
+  if(!data.candidate1Id || !data.candidate2Id) return 'Wybierz dwóch Chadów.';
+  if(data.candidate1Id===data.candidate2Id) return 'Wybierz dwóch różnych Chadów.';
+  return null;
+}
+async function startNewPoll(){
+  const data=readPollForm(), err=validatePollForm(data);
+  if(err) return alert(err);
+  const pollId='poll_'+Date.now();
+  try{
+    await db.ref('pollConfig').set({...data,pollId,active:true,startedAt:firebase.database.ServerValue.TIMESTAMP});
+    await db.ref('pollVotes/'+pollId).set({});
+    pollConfig={...data,pollId,active:true};
+    pollVotes={};
+    renderPollAdmin();
+    msg('Nowe głosowanie uruchomione.');
+  }catch(e){alert('Nie udało się rozpocząć ankiety: '+e.message);}
+}
+async function savePollSettings(){
+  if(!pollConfig.pollId) return alert('Najpierw rozpocznij ankietę.');
+  const data=readPollForm(), err=validatePollForm(data);
+  if(err) return alert(err);
+  try{
+    await db.ref('pollConfig').update(data);
+    msg('Ustawienia ankiety zapisane.');
+  }catch(e){alert('Nie udało się zapisać ustawień: '+e.message);}
+}
+async function setPollActive(active){
+  if(!pollConfig.pollId) return alert('Brak ankiety do zmiany.');
+  try{
+    await db.ref('pollConfig/active').set(!!active);
+    msg(active?'Ankieta wznowiona.':'Ankieta zakończona.');
+  }catch(e){alert('Nie udało się zmienić stanu ankiety: '+e.message);}
+}
+async function resetPollVotes(){
+  if(!pollConfig.pollId) return alert('Brak ankiety do resetu.');
+  if(!confirm('Wyzerować głosy aktualnej ankiety?')) return;
+  try{
+    await db.ref('pollVotes/'+pollConfig.pollId).set({});
+    msg('Głosy aktualnej ankiety wyzerowane.');
+  }catch(e){alert('Nie udało się wyzerować głosów: '+e.message);}
+}
+async function deletePoll(){
+  if(!pollConfig.pollId) return alert('Nie ma czego usuwać.');
+  if(!confirm('Usunąć bieżącą ankietę razem z jej głosami?')) return;
+  const id=pollConfig.pollId;
+  try{
+    await db.ref('pollConfig').remove();
+    await db.ref('pollVotes/'+id).remove();
+    pollConfig={}; pollVotes={};
+    renderPollAdmin();
+    msg('Ankieta usunięta.');
+  }catch(e){alert('Nie udało się usunąć ankiety: '+e.message);}
+}
+
 function esc(v){return String(v).replace(/[&<>'"]/g,x=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[x]))}
 $('login').onclick=()=>auth.signInWithEmailAndPassword($('email').value.trim(),$('password').value).catch(e=>$('loginMsg').textContent=e.message);
 $('logout').onclick=()=>auth.signOut();
-auth.onAuthStateChanged(u=>{const ok=u&&u.email&&u.email.toLowerCase()===ADMIN_EMAIL.toLowerCase();$('loginCard').classList.toggle('hidden',!!ok);$('panel').classList.toggle('hidden',!ok);$('logout').classList.toggle('hidden',!ok);if(ok){msg('Zalogowano jako administrator.');db.ref('chads').on('value',s=>{chads=s.val()||{};render();renderPollControls()});db.ref('votes').on('value',s=>{votes=s.val()||{};render()});db.ref('pollConfig').on('value',s=>{pollConfig=s.val()||pollConfig;renderPollControls()});db.ref('pollVotes').on('value',s=>{const all=s.val()||{};pollVotes=all[pollConfig.pollId]||{};renderPollControls()});}});
-let pollConfig={pollId:'default_poll',targetRank:1,candidate1Id:'chad_1',candidate2Id:'chad_2',active:false};
-let pollVotes={};
-function renderPollControls(){
-  const s1=$('pollCandidate1'),s2=$('pollCandidate2'); if(!s1||!s2)return;
-  const arr=Object.keys(chads).map(id=>({id,...chads[id]})).sort((a,b)=>(a.rank||999)-(b.rank||999));
-  const options=arr.map(c=>`<option value="${esc(c.id)}">#${c.rank||'-'} — ${esc(c.name||c.id)}</option>`).join('');
-  s1.innerHTML=options;s2.innerHTML=options;
-  if(pollConfig.candidate1Id)s1.value=pollConfig.candidate1Id; if(pollConfig.candidate2Id)s2.value=pollConfig.candidate2Id;
-  $('pollTargetRank').value=pollConfig.targetRank||1;
-  const n1=chads[pollConfig.candidate1Id]?.name||pollConfig.candidate1Id||'—';
-  const n2=chads[pollConfig.candidate2Id]?.name||pollConfig.candidate2Id||'—';
-  $('pollStatus').textContent=pollConfig.active?`AKTYWNA • ${n1} vs ${n2}`:`ZAKOŃCZONA • ${n1} vs ${n2}`;
-  $('pollCounts').textContent=`Aktualne głosy: ${n1} ${Number(pollVotes[pollConfig.candidate1Id]||0)} • ${n2} ${Number(pollVotes[pollConfig.candidate2Id]||0)}`;
-}
-$('startPoll').onclick=async()=>{
-  const c1=$('pollCandidate1').value,c2=$('pollCandidate2').value; if(!c1||!c2||c1===c2)return alert('Wybierz dwóch różnych Chadów.');
-  const config={pollId:'poll_'+Date.now(),targetRank:Number($('pollTargetRank').value)||1,candidate1Id:c1,candidate2Id:c2,active:true};
-  try{await db.ref('pollConfig').set(config);await db.ref('pollVotes/'+config.pollId).set({});msg('Nowa ankieta uruchomiona.');}catch(e){alert(e.message)}};
-$('closePoll').onclick=async()=>{try{await db.ref('pollConfig/active').set(false);msg('Ankieta zakończona.')}catch(e){alert(e.message)}};
-
+auth.onAuthStateChanged(u=>{const ok=u&&u.email&&u.email.toLowerCase()===ADMIN_EMAIL.toLowerCase();$('loginCard').classList.toggle('hidden',!!ok);$('panel').classList.toggle('hidden',!ok);$('logout').classList.toggle('hidden',!ok);if(ok){msg('Zalogowano jako administrator.');db.ref('chads').on('value',s=>{chads=s.val()||{};render();renderPollAdmin()});db.ref('votes').on('value',s=>{votes=s.val()||{};render()});db.ref('pollConfig').on('value',s=>{pollConfig=s.val()||{};renderPollAdmin()});db.ref('pollVotes').on('value',s=>{const all=s.val()||{};pollVotes=pollConfig.pollId&&all[pollConfig.pollId]?all[pollConfig.pollId]:{};renderPollAdmin()});}});
 $('save').onclick=async()=>{if(!auth.currentUser)return;const name=$('name').value.trim();if(!name)return alert('Podaj nazwę.');const id=editingId||('chad_'+Date.now());const old=chads[id]||{};const ranks=Object.values(chads).map(c=>Number(c.rank)||0).filter(Boolean);const rank=editingId?(old.rank||1):(ranks.length?Math.max(...ranks)+1:1);const data={name,aura:$('aura').value.trim(),titlePl:$('titlePl').value.trim(),titleEn:$('titleEn').value.trim(),img:$('img').value.trim(),descPl:$('descPl').value.trim(),descEn:$('descEn').value.trim(),locked:$('locked').checked,rank};try{const wasEditing=!!editingId;await db.ref('chads/'+id).set(data);clearForm();msg(wasEditing?'Zaktualizowano.':'Dodano nowego Chada.')}catch(e){alert(e.message)}};
 $('cancel').onclick=clearForm;
 window.removeChad=async id=>{if(!confirm('Usunąć tego Chada?'))return;try{await db.ref('chads/'+id).remove();await db.ref('votes/'+id).remove();msg('Usunięto.')}catch(e){alert(e.message)}};
