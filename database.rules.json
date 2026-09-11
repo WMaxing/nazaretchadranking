@@ -1,0 +1,29 @@
+{
+  "rules": {
+    ".read": true,
+    "chads": {
+      ".write": "auth != null && auth.token.email == 'kplatek.2020@gmail.com'"
+    },
+    "votes": {
+      "$chadId": {
+        ".write": "auth != null && ((!data.exists() && newData.isNumber() && newData.val() == 1) || (data.exists() && data.isNumber() && newData.isNumber() && newData.val() == data.val() + 1))"
+      }
+    },
+    "posts": {
+      "$postId": {
+        ".write": "auth != null && (!data.exists() || data.child('uid').val() == auth.uid || auth.token.email == 'kplatek.2020@gmail.com')",
+        "comments": {
+          "$commentId": {
+            ".write": "auth != null && (!data.exists() || data.child('uid').val() == auth.uid || auth.token.email == 'kplatek.2020@gmail.com')"
+          }
+        }
+      }
+    },
+    "currentWeek": {
+      ".write": "auth != null && auth.token.email == 'kplatek.2020@gmail.com'"
+    },
+    "rankings": {
+      ".write": "auth != null && auth.token.email == 'kplatek.2020@gmail.com'"
+    }
+  }
+}

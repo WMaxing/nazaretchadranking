@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Nazaret Chad Ranking — Admin</title>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-database-compat.js"></script>
+<style>
+:root{--bg:#08070c;--card:#12111a;--purple:#a855f7;--light:#c084fc;--gold:#facc15;--text:#fff;--sub:#9693a5;--red:#ef4444}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at top,#1e0c38 0,#08070c 55%);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;min-height:100vh}
+.wrap{max-width:900px;margin:auto;padding:24px 16px 50px}.top{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:18px}.brand{font-weight:900;letter-spacing:.5px}.links{display:flex;gap:8px;flex-wrap:wrap}.btn,.link{border:0;border-radius:10px;padding:10px 13px;background:linear-gradient(135deg,#a855f7,#6b21a8);color:#fff;font-weight:800;cursor:pointer;text-decoration:none}.btn.secondary{background:rgba(255,255,255,.08)}.btn.danger{background:#b91c1c}.card{background:rgba(18,17,26,.94);border:1px solid rgba(168,85,247,.25);border-radius:16px;padding:18px;margin-bottom:16px;box-shadow:0 10px 30px rgba(0,0,0,.25)}h1,h2{margin:0 0 10px}h1{font-size:1.4rem}h2{font-size:1.05rem}.muted{color:var(--sub);font-size:.85rem}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.field{display:flex;flex-direction:column;gap:6px}.field.full{grid-column:1/-1}label{font-size:.78rem;color:var(--sub);font-weight:700}input,textarea,select{width:100%;background:#090811;border:1px solid rgba(255,255,255,.12);border-radius:9px;padding:10px;color:#fff;outline:none}textarea{min-height:90px;resize:vertical}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.table{display:flex;flex-direction:column;gap:8px}.row{display:grid;grid-template-columns:50px 1fr auto;align-items:center;gap:10px;background:rgba(255,255,255,.035);border-radius:11px;padding:9px}.thumb{width:42px;height:42px;border-radius:8px;object-fit:cover;background:#222}.rank{font-weight:900;color:var(--gold);text-align:center}.rowname{font-weight:800}.rowmeta{font-size:.72rem;color:var(--sub)}.small{padding:7px 9px;font-size:.75rem}.status{padding:10px;border-radius:10px;background:rgba(168,85,247,.08);color:var(--light);font-size:.82rem;margin-bottom:12px}.hidden{display:none!important}.login{max-width:420px;margin:12vh auto}.notice{font-size:.78rem;color:var(--sub);line-height:1.45}.statbar{display:flex;gap:10px;flex-wrap:wrap}.stat{background:rgba(255,255,255,.04);padding:10px 12px;border-radius:10px;min-width:120px}.stat b{display:block;font-size:1.15rem}.checkbox{display:flex;align-items:center;gap:8px}.checkbox input{width:auto}
+@media(max-width:650px){.grid{grid-template-columns:1fr}.row{grid-template-columns:40px 1fr}.row .actions{grid-column:1/-1}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><div class="brand">🗿 NAZARET CHAD RANKING — ADMIN</div><div class="links"><a class="link" href="index.html">← Strona</a><button id="logout" class="btn secondary hidden">Wyloguj</button></div></div>
+
+  <section id="loginCard" class="card login">
+    <h1>Panel administratora</h1><p class="muted">Zaloguj się kontem administratora.</p>
+    <div class="field"><label>E-mail</label><input id="email" type="email" autocomplete="username"></div>
+    <div class="field" style="margin-top:10px"><label>Hasło</label><input id="password" type="password" autocomplete="current-password"></div>
+    <div class="actions"><button id="login" class="btn">Zaloguj</button></div>
+    <p id="loginMsg" class="notice"></p>
+  </section>
+
+  <main id="panel" class="hidden">
+    <div id="status" class="status">Ładowanie…</div>
+    <section class="card">
+      <h2>Ranking</h2><p class="muted">Głosy są liczone w Firebase. Możesz ręcznie przeliczyć pozycje i wyzerować głosy na nowy tydzień.</p>
+      <div id="stats" class="statbar" style="margin-top:12px"></div>
+      <div class="actions"><button id="recalc" class="btn">🏆 Przelicz ranking</button><button id="resetVotes" class="btn danger">🔄 Wyzeruj głosy</button><button id="importSeed" class="btn secondary">📥 Importuj startowych 15</button></div>
+    </section>
+
+    <section class="card">
+      <h2 id="formTitle">Dodaj nowego Chada</h2>
+      <div class="grid">
+        <div class="field"><label>Nazwa</label><input id="name" placeholder="np. Gigachad"></div>
+        <div class="field"><label>Aura Score</label><input id="aura" type="number" step="0.1" placeholder="99.0"></div>
+        <div class="field"><label>Tytuł PL</label><input id="titlePl" placeholder="Tytuł w rankingu"></div>
+        <div class="field"><label>Tytuł EN</label><input id="titleEn" placeholder="English title"></div>
+        <div class="field full"><label>URL zdjęcia</label><input id="img" placeholder="https://...jpg"></div>
+        <div class="field full"><label>Opis PL</label><textarea id="descPl"></textarea></div>
+        <div class="field full"><label>Opis EN</label><textarea id="descEn"></textarea></div>
+        <label class="checkbox"><input id="locked" type="checkbox"> Ukryj profil (locked)</label>
+      </div>
+      <div class="actions"><button id="save" class="btn">💾 Zapisz</button><button id="cancel" class="btn secondary hidden">Anuluj edycję</button></div>
+    </section>
+
+    <section class="card"><h2>Chadzi w rankingu</h2><div id="list" class="table"></div></section>
+  </main>
+</div>
+<script>
+const ADMIN_EMAIL='pokrok1337@gmail.com';
+const firebaseConfig={apiKey:'AIzaSyBIaDH5hBL2Q9m4OUUdPpK_B9Azj92MRc4',authDomain:'nazaretchadranking.firebaseapp.com',databaseURL:'https://nazaretchadranking-default-rtdb.firebaseio.com',projectId:'nazaretchadranking',storageBucket:'nazaretchadranking.firebasestorage.app',messagingSenderId:'183102038861',appId:'1:183102038861:web:b659bbf2a56ef6dc5a0d04'};
+firebase.initializeApp(firebaseConfig);const db=firebase.database(),auth=firebase.auth();
+let editingId=null, chads={};
+const $=id=>document.getElementById(id);
+function msg(t){$('status').textContent=t}
+function clearForm(){editingId=null;$('formTitle').textContent='Dodaj nowego Chada';['name','aura','titlePl','titleEn','img','descPl','descEn'].forEach(id=>$(id).value='');$('locked').checked=false;$('cancel').classList.add('hidden')}
+function fill(c){editingId=c.id;$('formTitle').textContent='Edytuj: '+c.name;$('name').value=c.name||'';$('aura').value=c.aura||'';$('titlePl').value=c.titlePl||'';$('titleEn').value=c.titleEn||'';$('img').value=c.img||'';$('descPl').value=c.descPl||'';$('descEn').value=c.descEn||'';$('locked').checked=!!c.locked;$('cancel').classList.remove('hidden');scrollTo({top:document.body.scrollHeight,behavior:'smooth'})}
+function render(){const arr=Object.keys(chads).map(id=>({id,...chads[id]})).sort((a,b)=>(a.rank||999)-(b.rank||999));$('list').innerHTML=arr.length?arr.map(c=>`<div class="row"><div class="rank">#${c.rank||'-'}</div><div style="display:flex;align-items:center;gap:9px"><img class="thumb" src="${esc(c.img||'')}" onerror="this.style.visibility='hidden'"><div><div class="rowname">${esc(c.name||'Bez nazwy')}</div><div class="rowmeta">${c.votes||0} głosów • Aura ${esc(String(c.aura??''))}</div></div></div><div class="actions"><button class="btn small secondary" onclick="fill(chads['${c.id}'])">Edytuj</button><button class="btn small danger" onclick="removeChad('${c.id}')">Usuń</button></div></div>`).join(''):'<div class="muted">Brak Chadów w bazie. Kliknij „Importuj startowych 15”.</div>';$('stats').innerHTML=`<div class="stat"><span class="muted">Chadzi</span><b>${arr.length}</b></div><div class="stat"><span class="muted">Głosów</span><b>${arr.reduce((n,c)=>n+(Number(c.votes)||0),0)}</b></div><div class="stat"><span class="muted">#1</span><b>${esc(arr[0]?.name||'—')}</b></div>`}
+function esc(v){return String(v).replace(/[&<>'"]/g,x=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[x]))}
+$('login').onclick=()=>auth.signInWithEmailAndPassword($('email').value.trim(),$('password').value).catch(e=>$('loginMsg').textContent=e.message);
+$('logout').onclick=()=>auth.signOut();
+auth.onAuthStateChanged(u=>{const ok=u&&u.email&&u.email.toLowerCase()===ADMIN_EMAIL.toLowerCase();$('loginCard').classList.toggle('hidden',!!ok);$('panel').classList.toggle('hidden',!ok);$('logout').classList.toggle('hidden',!ok);if(ok){msg('Zalogowano jako administrator.');db.ref('chads').on('value',s=>{chads=s.val()||{};render()})}});
+$('save').onclick=async()=>{if(!auth.currentUser)return;const name=$('name').value.trim();if(!name)return alert('Podaj nazwę.');const id=editingId||('chad_'+Date.now());const old=chads[id]||{};const ranks=Object.values(chads).map(c=>Number(c.rank)||0).filter(Boolean);const rank=editingId?(old.rank||1):(ranks.length?Math.max(...ranks)+1:1);const data={name,aura:$('aura').value.trim(),titlePl:$('titlePl').value.trim(),titleEn:$('titleEn').value.trim(),img:$('img').value.trim(),descPl:$('descPl').value.trim(),descEn:$('descEn').value.trim(),locked:$('locked').checked,rank,votes:Number(old.votes)||0};try{const wasEditing=!!editingId;await db.ref('chads/'+id).set(data);clearForm();msg(wasEditing?'Zaktualizowano.':'Dodano nowego Chada.')}catch(e){alert(e.message)}};
+$('cancel').onclick=clearForm;
+window.removeChad=async id=>{if(!confirm('Usunąć tego Chada?'))return;try{await db.ref('chads/'+id).remove();await db.ref('votes/'+id).remove();msg('Usunięto.')}catch(e){alert(e.message)}};
+$('recalc').onclick=async()=>{const arr=Object.keys(chads).map(id=>({id,...chads[id]})).sort((a,b)=>(Number(b.votes)||0)-(Number(a.votes)||0));const updates={};arr.forEach((c,i)=>{updates['chads/'+c.id+'/rank']=i+1});await db.ref().update(updates);msg('Ranking przeliczony według liczby głosów.')};
+$('resetVotes').onclick=async()=>{if(!confirm('Wyzerować wszystkie głosy i rozpocząć nowy tydzień?'))return;const updates={votes:null,currentWeek:'WEEK_'+new Date().toISOString().slice(0,10)};Object.keys(chads).forEach(id=>updates['chads/'+id+'/votes']=0);await db.ref().update(updates);msg('Głosy wyzerowane.')};
+$('importSeed').onclick=async()=>{if(!confirm('Zaimportować startowych 15 Chadów z seed.json? Istniejące rekordy o tych samych ID zostaną nadpisane.'))return;try{const seed=await fetch('seed.json').then(r=>r.json());const updates={};seed.forEach(c=>{const x={...c};delete x.id;updates['chads/'+c.id]=x});await db.ref().update(updates);msg('Zaimportowano '+seed.length+' Chadów.')}catch(e){alert('Nie udało się pobrać seed.json: '+e.message)}};
+</script>
+</body></html>
