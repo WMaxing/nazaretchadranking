@@ -35,6 +35,22 @@
     </section>
 
     <section class="card">
+      <h2>📊 Ankieta społeczna</h2>
+      <p class="muted">Wybierz dwóch Chadów i rozpocznij nową ankietę. Każde uruchomienie tworzy nowe ID ankiety, więc stare głosy nie przenoszą się do nowej.</p>
+      <div class="grid" style="margin-top:12px">
+        <div class="field"><label>Chad #1</label><select id="pollCandidate1"></select></div>
+        <div class="field"><label>Chad #2</label><select id="pollCandidate2"></select></div>
+        <div class="field"><label>Miejsce</label><input id="pollTargetRank" type="number" min="1" value="1"></div>
+        <div class="field"><label>Status</label><div id="pollStatus" class="status" style="margin:0">—</div></div>
+      </div>
+      <div class="actions">
+        <button id="startPoll" class="btn">🚀 Rozpocznij nowe głosowanie</button>
+        <button id="closePoll" class="btn danger">⏹️ Zakończ ankietę</button>
+      </div>
+      <div id="pollCounts" class="muted" style="margin-top:10px"></div>
+    </section>
+
+    <section class="card">
       <h2 id="formTitle">Dodaj nowego Chada</h2>
       <div class="grid">
         <div class="field"><label>Nazwa</label><input id="name" placeholder="np. Gigachad"></div>
@@ -65,7 +81,27 @@ function render(){const arr=Object.keys(chads).map(id=>({id,...chads[id],votes:N
 function esc(v){return String(v).replace(/[&<>'"]/g,x=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[x]))}
 $('login').onclick=()=>auth.signInWithEmailAndPassword($('email').value.trim(),$('password').value).catch(e=>$('loginMsg').textContent=e.message);
 $('logout').onclick=()=>auth.signOut();
-auth.onAuthStateChanged(u=>{const ok=u&&u.email&&u.email.toLowerCase()===ADMIN_EMAIL.toLowerCase();$('loginCard').classList.toggle('hidden',!!ok);$('panel').classList.toggle('hidden',!ok);$('logout').classList.toggle('hidden',!ok);if(ok){msg('Zalogowano jako administrator.');db.ref('chads').on('value',s=>{chads=s.val()||{};render()});db.ref('votes').on('value',s=>{votes=s.val()||{};render()});}});
+auth.onAuthStateChanged(u=>{const ok=u&&u.email&&u.email.toLowerCase()===ADMIN_EMAIL.toLowerCase();$('loginCard').classList.toggle('hidden',!!ok);$('panel').classList.toggle('hidden',!ok);$('logout').classList.toggle('hidden',!ok);if(ok){msg('Zalogowano jako administrator.');db.ref('chads').on('value',s=>{chads=s.val()||{};render();renderPollControls()});db.ref('votes').on('value',s=>{votes=s.val()||{};render()});db.ref('pollConfig').on('value',s=>{pollConfig=s.val()||pollConfig;renderPollControls()});db.ref('pollVotes').on('value',s=>{const all=s.val()||{};pollVotes=all[pollConfig.pollId]||{};renderPollControls()});}});
+let pollConfig={pollId:'default_poll',targetRank:1,candidate1Id:'chad_1',candidate2Id:'chad_2',active:false};
+let pollVotes={};
+function renderPollControls(){
+  const s1=$('pollCandidate1'),s2=$('pollCandidate2'); if(!s1||!s2)return;
+  const arr=Object.keys(chads).map(id=>({id,...chads[id]})).sort((a,b)=>(a.rank||999)-(b.rank||999));
+  const options=arr.map(c=>`<option value="${esc(c.id)}">#${c.rank||'-'} — ${esc(c.name||c.id)}</option>`).join('');
+  s1.innerHTML=options;s2.innerHTML=options;
+  if(pollConfig.candidate1Id)s1.value=pollConfig.candidate1Id; if(pollConfig.candidate2Id)s2.value=pollConfig.candidate2Id;
+  $('pollTargetRank').value=pollConfig.targetRank||1;
+  const n1=chads[pollConfig.candidate1Id]?.name||pollConfig.candidate1Id||'—';
+  const n2=chads[pollConfig.candidate2Id]?.name||pollConfig.candidate2Id||'—';
+  $('pollStatus').textContent=pollConfig.active?`AKTYWNA • ${n1} vs ${n2}`:`ZAKOŃCZONA • ${n1} vs ${n2}`;
+  $('pollCounts').textContent=`Aktualne głosy: ${n1} ${Number(pollVotes[pollConfig.candidate1Id]||0)} • ${n2} ${Number(pollVotes[pollConfig.candidate2Id]||0)}`;
+}
+$('startPoll').onclick=async()=>{
+  const c1=$('pollCandidate1').value,c2=$('pollCandidate2').value; if(!c1||!c2||c1===c2)return alert('Wybierz dwóch różnych Chadów.');
+  const config={pollId:'poll_'+Date.now(),targetRank:Number($('pollTargetRank').value)||1,candidate1Id:c1,candidate2Id:c2,active:true};
+  try{await db.ref('pollConfig').set(config);await db.ref('pollVotes/'+config.pollId).set({});msg('Nowa ankieta uruchomiona.');}catch(e){alert(e.message)}};
+$('closePoll').onclick=async()=>{try{await db.ref('pollConfig/active').set(false);msg('Ankieta zakończona.')}catch(e){alert(e.message)}};
+
 $('save').onclick=async()=>{if(!auth.currentUser)return;const name=$('name').value.trim();if(!name)return alert('Podaj nazwę.');const id=editingId||('chad_'+Date.now());const old=chads[id]||{};const ranks=Object.values(chads).map(c=>Number(c.rank)||0).filter(Boolean);const rank=editingId?(old.rank||1):(ranks.length?Math.max(...ranks)+1:1);const data={name,aura:$('aura').value.trim(),titlePl:$('titlePl').value.trim(),titleEn:$('titleEn').value.trim(),img:$('img').value.trim(),descPl:$('descPl').value.trim(),descEn:$('descEn').value.trim(),locked:$('locked').checked,rank};try{const wasEditing=!!editingId;await db.ref('chads/'+id).set(data);clearForm();msg(wasEditing?'Zaktualizowano.':'Dodano nowego Chada.')}catch(e){alert(e.message)}};
 $('cancel').onclick=clearForm;
 window.removeChad=async id=>{if(!confirm('Usunąć tego Chada?'))return;try{await db.ref('chads/'+id).remove();await db.ref('votes/'+id).remove();msg('Usunięto.')}catch(e){alert(e.message)}};
