@@ -1525,7 +1525,8 @@ function castPollVote() {
 
       try {
         const imageUrl = await uploadImage(file);
-        await db.ref('posts').push({
+        const newPostRef = postsRef.push();
+        await newPostRef.set({
           author: currentUser.displayName || currentUser.email,
           uid: currentUser.uid,
           userEmail: currentUser.email,
@@ -1533,6 +1534,14 @@ function castPollVote() {
           imageUrl: imageUrl || null,
           timestamp: Date.now()
         });
+
+        // Listener realtime powinien zrobić to automatycznie. Ten fallback sprawia,
+        // że wpis pojawi się również wtedy, gdy przeglądarka opóźni callback listenera.
+        const savedSnapshot = await newPostRef.once('value');
+        if (savedSnapshot.exists()) {
+          postsDataCache[newPostRef.key] = savedSnapshot.val();
+          renderPosts();
+        }
 
         textInput.value = "";
         fileInput.value = "";
@@ -1752,8 +1761,40 @@ function deleteComment(postId, commentId) {
     }
     
 
-    db.ref('posts').on('value', (snapshot) => {
-      postsDataCache = snapshot.val() || {};
+    // =========================
+    // REALTIME POSTS SYNC
+    // =========================
+    // Firebase Realtime Database powinien aktualizować feed bez odświeżania strony.
+    // Używamy osobnego listenera z obsługą błędów oraz logami diagnostycznymi.
+    const postsRef = db.ref('posts');
+
+    postsRef.on('value', (snapshot) => {
+      try {
+        const data = snapshot.val();
+        postsDataCache = (data && typeof data === 'object') ? data : {};
+
+        console.log('[Firebase] /posts updated:', Object.keys(postsDataCache).length, 'post(s)');
+        renderPosts();
+      } catch (err) {
+        console.error('[Firebase] Error while rendering /posts:', err);
+      }
+    }, (error) => {
+      console.error('[Firebase] Cannot read /posts:', error);
+
+      const container = document.getElementById('postsContainer');
+      if (container) {
+        container.innerHTML = `<p style="text-align:center; color:#ff6b81; font-size:0.85rem; padding:20px;">
+          ${currentLang === 'pl'
+            ? 'Nie udało się pobrać wpisów. Sprawdź połączenie z Firebase.'
+            : 'Could not load posts. Check the Firebase connection.'}
+        </p>`;
+      }
+    });
+
+    // Jeśli zakładka społeczności była już otwarta przed inicjalizacją Firebase,
+    // wykonaj dodatkowy render po załadowaniu DOM. Listener powyżej nadal pozostaje
+    // głównym mechanizmem automatycznego odświeżania.
+    window.addEventListener('load', () => {
       renderPosts();
     });
 
