@@ -961,19 +961,15 @@ auth.onAuthStateChanged((user) => {
   updateAuthUI();
   renderPosts();
 });
-    
-    const pollConfig = {
+    // Aktualna ankieta jest sterowana z Firebase /pollConfig.
+    let pollConfig = {
+      pollId: "default_poll",
       targetRank: 1,
       candidate1Id: "chad_1",
       candidate2Id: "chad_2",
-      active: false // false = Ankieta Zakończona
+      active: false
     };
-
-    // Wpisz tutaj faktyczną/ostateczną liczbę głosów zdobytych w 1. tygodniu
-const archivedPollVotes = {
-  "chad_1": 577, // Liczba głosów dla Luki
-  "chad_2": 251  // Liczba głosów dla Ten od Midasa
-};
+    let pollVotesCache = {};
     
 
     let chadsData = [
@@ -1282,124 +1278,100 @@ const archivedPollVotes = {
     function selectPollOption(candidateId) {
   if (!pollConfig.active) return;
 
-  const weekKey = getWeekIdentifier();
-  if (localStorage.getItem("poll_voted_" + weekKey) === "1") return;
+  if (localStorage.getItem("poll_voted_" + pollConfig.pollId) === "1") return;
 
   selectedPollCandidateId = candidateId;
   updatePollUI();
     }
     
     function updatePollVotesCount() {
-  // Jeśli ankieta jest wyłączona, odczytujemy wyłącznie zarchiwizowane dane
-  const v1 = !pollConfig.active 
-    ? (archivedPollVotes[pollConfig.candidate1Id] || 0) 
-    : (currentVotesCache[pollConfig.candidate1Id] ?? archivedPollVotes[pollConfig.candidate1Id] ?? 0);
-
-  const v2 = !pollConfig.active 
-    ? (archivedPollVotes[pollConfig.candidate2Id] || 0) 
-    : (currentVotesCache[pollConfig.candidate2Id] ?? archivedPollVotes[pollConfig.candidate2Id] ?? 0);
-
-  const total = v1 + v2;
-
-  const subElem = document.getElementById("txt-poll-sub");
-  if (!pollConfig.active) {
-    subElem.innerText = total + (currentLang === "pl" ? " oddanych głosów • Ankieta zakończona " : " votes cast • Poll closed ");
-  } else {
-    subElem.innerText = total + i18n[currentLang].pollVotesSub;
-  }
+      const v1 = Number(pollVotesCache[pollConfig.candidate1Id] || 0);
+      const v2 = Number(pollVotesCache[pollConfig.candidate2Id] || 0);
+      const total = v1 + v2;
+      const subElem = document.getElementById("txt-poll-sub");
+      if (!subElem) return;
+      subElem.innerText = total + (currentLang === "pl" ? " oddanych głosów" : " votes cast") + (!pollConfig.active ? (currentLang === "pl" ? " • Ankieta zakończona" : " • Poll closed") : "");
     }
-    
+
     function updatePollUI() {
-  const opt1 = document.getElementById("poll-opt-1");
-  const opt2 = document.getElementById("poll-opt-2");
-  const btn = document.getElementById("btnPollVote");
+      const opt1 = document.getElementById("poll-opt-1");
+      const opt2 = document.getElementById("poll-opt-2");
+      const btn = document.getElementById("btnPollVote");
+      const bar1 = document.getElementById("poll-bar-1");
+      const bar2 = document.getElementById("poll-bar-2");
+      const res1 = document.getElementById("poll-result-1");
+      const res2 = document.getElementById("poll-result-2");
+      if (!opt1 || !opt2 || !btn || !bar1 || !bar2 || !res1 || !res2) return;
 
-  const bar1 = document.getElementById("poll-bar-1");
-  const bar2 = document.getElementById("poll-bar-2");
-  const res1 = document.getElementById("poll-result-1");
-  const res2 = document.getElementById("poll-result-2");
+      const v1 = Number(pollVotesCache[pollConfig.candidate1Id] || 0);
+      const v2 = Number(pollVotesCache[pollConfig.candidate2Id] || 0);
+      const total = v1 + v2;
+      const pct1 = total ? Math.round((v1 / total) * 100) : 0;
+      const pct2 = total ? 100 - pct1 : 0;
+      const votedCandidate = localStorage.getItem("poll_voted_candidate_" + pollConfig.pollId);
+      const hasVoted = !!votedCandidate || localStorage.getItem("poll_voted_" + pollConfig.pollId) === "1";
 
-  // Jeśli ankieta jest wyłączona, odczytujemy wyłącznie zarchiwizowane dane
-  const v1 = !pollConfig.active 
-    ? (archivedPollVotes[pollConfig.candidate1Id] || 0) 
-    : (currentVotesCache[pollConfig.candidate1Id] ?? archivedPollVotes[pollConfig.candidate1Id] ?? 0);
+      document.getElementById("poll-pct-1").innerText = pct1 + "%";
+      document.getElementById("poll-cnt-1").innerText = "(" + v1 + ")";
+      document.getElementById("poll-pct-2").innerText = pct2 + "%";
+      document.getElementById("poll-cnt-2").innerText = "(" + v2 + ")";
 
-  const v2 = !pollConfig.active 
-    ? (archivedPollVotes[pollConfig.candidate2Id] || 0) 
-    : (currentVotesCache[pollConfig.candidate2Id] ?? archivedPollVotes[pollConfig.candidate2Id] ?? 0);
+      opt1.classList.remove("selected", "voted");
+      opt2.classList.remove("selected", "voted");
 
-  const total = v1 + v2;
+      if (votedCandidate === pollConfig.candidate1Id) opt1.classList.add("voted");
+      if (votedCandidate === pollConfig.candidate2Id) opt2.classList.add("voted");
 
-  let pct1 = 0, pct2 = 0;
-  if (total > 0) {
-    pct1 = Math.round((v1 / total) * 100);
-    pct2 = 100 - pct1;
-  }
-      
-  // Wersja zablokowana – zawsze wyświetla stały wynik z archiwum i sztywny progress bar
-  if (!pollConfig.active) {
-    res1.style.display = "flex";
-    res2.style.display = "flex";
-    document.getElementById("poll-pct-1").innerText = pct1 + "%";
-    document.getElementById("poll-cnt-1").innerText = "(" + v1 + ")";
-    document.getElementById("poll-pct-2").innerText = pct2 + "%";
-    document.getElementById("poll-cnt-2").innerText = "(" + v2 + ")";
-    bar1.style.width = pct1 + "%";
-    bar2.style.width = pct2 + "%";
+      if (!pollConfig.active) {
+        res1.style.display = "flex";
+        res2.style.display = "flex";
+        bar1.style.width = pct1 + "%";
+        bar2.style.width = pct2 + "%";
+        btn.disabled = true;
+        document.getElementById("txt-poll-btn").innerText = currentLang === "pl" ? "🔒 Ankieta zakończona" : "🔒 Poll closed";
+        return;
+      }
 
-    opt1.classList.remove("selected");
-    opt2.classList.remove("selected");
-
-    btn.disabled = true;
-    document.getElementById("txt-poll-btn").innerText = currentLang === "pl" ? "🔒 Ankieta zakończona" : "🔒 Poll closed";
-    return;
-  }
-
-  // Logika dla aktywnej ankiety
-  const weekKey = getWeekIdentifier();
-  const votedCandidate = localStorage.getItem("poll_voted_candidate_" + weekKey);
-  const hasVoted = !!votedCandidate || localStorage.getItem("poll_voted_" + weekKey) === "1";
-
-  opt1.classList.remove("selected", "voted");
-  opt2.classList.remove("selected", "voted");
-
-  if (hasVoted) {
-    res1.style.display = "flex"; res2.style.display = "flex";
-    document.getElementById("poll-pct-1").innerText = pct1 + "%";
-    document.getElementById("poll-cnt-1").innerText = "(" + v1 + ")";
-    document.getElementById("poll-pct-2").innerText = pct2 + "%";
-    document.getElementById("poll-cnt-2").innerText = "(" + v2 + ")";
-    bar1.style.width = pct1 + "%"; bar2.style.width = pct2 + "%";
-
-    if (votedCandidate === pollConfig.candidate1Id) opt1.classList.add("voted");
-    else if (votedCandidate === pollConfig.candidate2Id) opt2.classList.add("voted");
-
-    btn.disabled = true;
-    document.getElementById("txt-poll-btn").innerText = i18n[currentLang].pollBtnVoted;
-  } else {
-    res1.style.display = "none"; res2.style.display = "none";
-    bar1.style.width = "0%"; bar2.style.width = "0%";
-
-    if (selectedPollCandidateId === pollConfig.candidate1Id) opt1.classList.add("selected");
-    else if (selectedPollCandidateId === pollConfig.candidate2Id) opt2.classList.add("selected");
-
-    btn.disabled = !selectedPollCandidateId;
-    document.getElementById("txt-poll-btn").innerText = i18n[currentLang].pollBtnVote;
-  }
+      if (hasVoted) {
+        res1.style.display = "flex";
+        res2.style.display = "flex";
+        bar1.style.width = pct1 + "%";
+        bar2.style.width = pct2 + "%";
+        btn.disabled = true;
+        document.getElementById("txt-poll-btn").innerText = i18n[currentLang].pollBtnVoted;
+      } else {
+        res1.style.display = "none";
+        res2.style.display = "none";
+        bar1.style.width = "0%";
+        bar2.style.width = "0%";
+        if (selectedPollCandidateId === pollConfig.candidate1Id) opt1.classList.add("selected");
+        if (selectedPollCandidateId === pollConfig.candidate2Id) opt2.classList.add("selected");
+        btn.disabled = !selectedPollCandidateId;
+        document.getElementById("txt-poll-btn").innerText = i18n[currentLang].pollBtnVote;
+      }
     }
       
   
-function castPollVote() {
-  if (!pollConfig.active) return; // Zablokowanie głosowania w 2. tygodniu
-  if (!selectedPollCandidateId) return;
-  const weekKey = getWeekIdentifier();
-  if (localStorage.getItem("poll_voted_" + weekKey) !== "1") {
-    localStorage.setItem("poll_voted_" + weekKey, "1");
-    localStorage.setItem("poll_voted_candidate_" + weekKey, selectedPollCandidateId);
-    
-    db.ref('votes/' + selectedPollCandidateId).transaction(function(c) { return (c || 0) + 1; });
-    updatePollVotesCount();
-    updatePollUI();
+async function castPollVote() {
+  if (!pollConfig.active || !selectedPollCandidateId) return;
+  if (![pollConfig.candidate1Id, pollConfig.candidate2Id].includes(selectedPollCandidateId)) return;
+
+  const votedKey = "poll_voted_" + pollConfig.pollId;
+  if (localStorage.getItem(votedKey) === "1") return;
+
+  const btn = document.getElementById("btnPollVote");
+  if (btn) btn.disabled = true;
+
+  try {
+    await db.ref('pollVotes/' + pollConfig.pollId + '/' + selectedPollCandidateId)
+      .transaction(function(c) { return (Number(c) || 0) + 1; });
+    localStorage.setItem(votedKey, "1");
+    localStorage.setItem("poll_voted_candidate_" + pollConfig.pollId, selectedPollCandidateId);
+    selectedPollCandidateId = null;
+  } catch (error) {
+    console.error('[Firebase] poll vote write ERROR:', error);
+    alert('Nie udało się zapisać głosu: ' + error.message);
+    if (btn) btn.disabled = false;
   }
 }
     
@@ -1768,6 +1740,27 @@ function deleteComment(postId, commentId) {
       }
     }, function(error) {
       console.error('[Firebase] /posts ERROR:', error);
+    });
+
+    // Konfiguracja aktualnej ankiety oraz jej głosy.
+    db.ref('pollConfig').on('value', function(snapshot) {
+      const remote = snapshot.val();
+      if (remote && typeof remote === 'object') pollConfig = { ...pollConfig, ...remote };
+      selectedPollCandidateId = null;
+      setupPollUI();
+      updatePollVotesCount();
+      updatePollUI();
+    }, function(error) {
+      console.error('[Firebase] /pollConfig ERROR:', error);
+    });
+
+    db.ref('pollVotes').on('value', function(snapshot) {
+      const all = snapshot.val() || {};
+      pollVotesCache = (all && all[pollConfig.pollId]) || {};
+      updatePollVotesCount();
+      updatePollUI();
+    }, function(error) {
+      console.error('[Firebase] /pollVotes ERROR:', error);
     });
 
     // Dane rankingu są trzymane w /chads.
