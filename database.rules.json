@@ -9,12 +9,12 @@
       ".write": "auth != null"
     },
     "pollConfig": {
-      ".read": "auth != null",
+      ".read": true,
       ".write": "auth != null && auth.token.email == 'pokrok1337@gmail.com'"
     },
     "pollVotes": {
-      ".read": "auth != null",
-      ".write": "auth != null"
+      ".read": true,
+      ".write": true
     },
     "chads": {
       ".read": true,
