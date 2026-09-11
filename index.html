@@ -1812,37 +1812,75 @@ function deleteComment(postId, commentId) {
       renderHallOfFame();
     });
 
-    // Główny listener Firebase – głosy i zapisane pozycje.
-    db.ref().on('value', function(snapshot) {
-      const data = snapshot.val() || {};
-      const storedWeek = data.currentWeek;
-      const thisWeek = getWeekIdentifier();
-      const votes = data.votes || {};
-      const savedRankings = data.rankings || null;
+    // WAŻNE: nie nasłuchujemy już na całej bazie przez db.ref().on('value').
+    // Przy regułach Firebase zablokowany odczyt głównego węzła powodował
+    // permission_denied i przez to głosy nie odświeżały się na stronie.
 
-      chadsData.forEach(chad => {
-        chad.votes = votes[chad.id] || 0;
-        if (savedRankings && savedRankings[chad.id] !== undefined) chad.rank = savedRankings[chad.id];
-      });
-
-      if (storedWeek && storedWeek !== thisWeek && chadsData.length) {
-        performWeeklyReset(thisWeek);
-        return;
-      } else if (!storedWeek) {
-        db.ref('currentWeek').set(thisWeek);
-      }
+    const votesRef = db.ref('votes');
+    votesRef.on('value', function(snapshot) {
+      const votes = snapshot.val() || {};
+      console.log('[Firebase] /votes UPDATE:', votes);
 
       currentVotesCache = votes;
+
+      // Synchronizuj liczbę głosów z danymi Chadów tylko w pamięci strony.
+      chadsData.forEach(chad => {
+        chad.votes = Number(votes[chad.id] || 0);
+      });
+
       updatePollVotesCount();
       updatePollUI();
       renderRankings();
       setupPollUI();
-      renderHallOfFame();
 
       if (activeChadId !== null) {
         const activeChad = chadsData.find(c => c.id === activeChadId);
-        if (activeChad) document.getElementById("modalStatVotes").innerText = activeChad.votes || 0;
+        if (activeChad) {
+          const modalVotes = document.getElementById('modalStatVotes');
+          if (modalVotes) modalVotes.innerText = activeChad.votes || 0;
+        }
       }
+    }, function(error) {
+      console.error('[Firebase] /votes ERROR:', error);
+    });
+
+    // Pozycje rankingowe są odczytywane osobno.
+    const rankingsRef = db.ref('rankings');
+    rankingsRef.on('value', function(snapshot) {
+      const savedRankings = snapshot.val() || {};
+      console.log('[Firebase] /rankings UPDATE:', savedRankings);
+
+      chadsData.forEach(chad => {
+        if (savedRankings[chad.id] !== undefined) {
+          chad.rank = savedRankings[chad.id];
+        }
+      });
+
+      renderRankings();
+      setupPollUI();
+      renderHallOfFame();
+    }, function(error) {
+      console.error('[Firebase] /rankings ERROR:', error);
+    });
+
+    // Tydzień jest odczytywany osobno, bez odczytu całego root Firebase.
+    const currentWeekRef = db.ref('currentWeek');
+    currentWeekRef.on('value', function(snapshot) {
+      const storedWeek = snapshot.val();
+      const thisWeek = getWeekIdentifier();
+
+      console.log('[Firebase] /currentWeek:', storedWeek);
+
+      if (!storedWeek) {
+        currentWeekRef.set(thisWeek).catch(error =>
+          console.error('[Firebase] currentWeek WRITE ERROR:', error)
+        );
+      } else if (storedWeek !== thisWeek && chadsData.length) {
+        console.warn('[Firebase] Nowy tydzień - wykonywanie resetu rankingu.');
+        performWeeklyReset(thisWeek);
+      }
+    }, function(error) {
+      console.error('[Firebase] /currentWeek ERROR:', error);
     });
 
     function performWeeklyReset(newWeekKey) {
