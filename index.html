@@ -963,10 +963,10 @@ auth.onAuthStateChanged((user) => {
 });
     // Aktualna ankieta jest sterowana z Firebase /pollConfig.
     let pollConfig = {
-      pollId: "default_poll",
+      pollId: null,
       targetRank: 1,
-      candidate1Id: "chad_1",
-      candidate2Id: "chad_2",
+      candidate1Id: null,
+      candidate2Id: null,
       active: false
     };
     let pollVotesCache = {};
@@ -1256,20 +1256,18 @@ auth.onAuthStateChanged((user) => {
     }
 
     function setupPollUI() {
-      const c1 = chadsData.find(c => c.id === pollConfig.candidate1Id);
-      const c2 = chadsData.find(c => c.id === pollConfig.candidate2Id);
+      const c1 = pollConfig.candidate1Id ? chadsData.find(c => c.id === pollConfig.candidate1Id) : null;
+      const c2 = pollConfig.candidate2Id ? chadsData.find(c => c.id === pollConfig.candidate2Id) : null;
+      const name1 = c1 ? c1.name : (currentLang === "pl" ? "Brak kandydata" : "No candidate");
+      const name2 = c2 ? c2.name : (currentLang === "pl" ? "Brak kandydata" : "No candidate");
 
-      if (c1) {
-        document.getElementById("poll-name-1").innerText = c1.name;
-        const img1 = document.getElementById("poll-avatar-1");
-        img1.innerHTML = c1.img ? '<img src="' + c1.img + '" style="width:100%;height:100%;border-radius:50%;object-fit:cover">' : "🗿";
-      }
+      document.getElementById("poll-name-1").innerText = name1;
+      document.getElementById("poll-name-2").innerText = name2;
 
-      if (c2) {
-        document.getElementById("poll-name-2").innerText = c2.name;
-        const img2 = document.getElementById("poll-avatar-2");
-        img2.innerHTML = c2.img ? '<img src="' + c2.img + '" style="width:100%;height:100%;border-radius:50%;object-fit:cover">' : "🗿";
-      }
+      const img1 = document.getElementById("poll-avatar-1");
+      const img2 = document.getElementById("poll-avatar-2");
+      img1.innerHTML = c1 && c1.img ? '<img src="' + c1.img + '" style="width:100%;height:100%;border-radius:50%;object-fit:cover">' : "🗿";
+      img2.innerHTML = c2 && c2.img ? '<img src="' + c2.img + '" style="width:100%;height:100%;border-radius:50%;object-fit:cover">' : "🗿";
 
       updatePollVotesCount();
       updatePollUI();
@@ -1285,11 +1283,15 @@ auth.onAuthStateChanged((user) => {
     }
     
     function updatePollVotesCount() {
-      const v1 = Number(pollVotesCache[pollConfig.candidate1Id] || 0);
-      const v2 = Number(pollVotesCache[pollConfig.candidate2Id] || 0);
+      const v1 = Number((pollConfig.candidate1Id && pollVotesCache[pollConfig.candidate1Id]) || 0);
+      const v2 = Number((pollConfig.candidate2Id && pollVotesCache[pollConfig.candidate2Id]) || 0);
       const total = v1 + v2;
       const subElem = document.getElementById("txt-poll-sub");
       if (!subElem) return;
+      if (!pollConfig.pollId || !pollConfig.candidate1Id || !pollConfig.candidate2Id) {
+        subElem.innerText = currentLang === "pl" ? "Ankieta nie została skonfigurowana" : "Poll is not configured";
+        return;
+      }
       subElem.innerText = total + (currentLang === "pl" ? " oddanych głosów" : " votes cast") + (!pollConfig.active ? (currentLang === "pl" ? " • Ankieta zakończona" : " • Poll closed") : "");
     }
 
@@ -1303,11 +1305,22 @@ auth.onAuthStateChanged((user) => {
       const res2 = document.getElementById("poll-result-2");
       if (!opt1 || !opt2 || !btn || !bar1 || !bar2 || !res1 || !res2) return;
 
-      const v1 = Number(pollVotesCache[pollConfig.candidate1Id] || 0);
-      const v2 = Number(pollVotesCache[pollConfig.candidate2Id] || 0);
+      const v1 = Number((pollConfig.candidate1Id && pollVotesCache[pollConfig.candidate1Id]) || 0);
+      const v2 = Number((pollConfig.candidate2Id && pollVotesCache[pollConfig.candidate2Id]) || 0);
       const total = v1 + v2;
       const pct1 = total ? Math.round((v1 / total) * 100) : 0;
       const pct2 = total ? 100 - pct1 : 0;
+
+      if (!pollConfig.pollId || !pollConfig.candidate1Id || !pollConfig.candidate2Id) {
+        res1.style.display = "none";
+        res2.style.display = "none";
+        bar1.style.width = "0%";
+        bar2.style.width = "0%";
+        btn.disabled = true;
+        document.getElementById("txt-poll-btn").innerText = currentLang === "pl" ? "⚙️ Skonfiguruj ankietę w panelu admina" : "⚙️ Configure poll in admin panel";
+        return;
+      }
+
       const votedCandidate = localStorage.getItem("poll_voted_candidate_" + pollConfig.pollId);
       const hasVoted = !!votedCandidate || localStorage.getItem("poll_voted_" + pollConfig.pollId) === "1";
 
@@ -1353,7 +1366,7 @@ auth.onAuthStateChanged((user) => {
       
   
 async function castPollVote() {
-  if (!pollConfig.active || !selectedPollCandidateId) return;
+  if (!pollConfig.active || !pollConfig.pollId || !selectedPollCandidateId) return;
   if (![pollConfig.candidate1Id, pollConfig.candidate2Id].includes(selectedPollCandidateId)) return;
 
   const votedKey = "poll_voted_" + pollConfig.pollId;
@@ -1364,7 +1377,8 @@ async function castPollVote() {
 
   try {
     await db.ref('pollVotes/' + pollConfig.pollId + '/' + selectedPollCandidateId)
-      .transaction(function(c) { return (Number(c) || 0) + 1; });
+      .transaction(c => (Number(c) || 0) + 1);
+
     localStorage.setItem(votedKey, "1");
     localStorage.setItem("poll_voted_candidate_" + pollConfig.pollId, selectedPollCandidateId);
     selectedPollCandidateId = null;
@@ -1745,7 +1759,10 @@ function deleteComment(postId, commentId) {
     // Konfiguracja aktualnej ankiety oraz jej głosy.
     db.ref('pollConfig').on('value', function(snapshot) {
       const remote = snapshot.val();
-      if (remote && typeof remote === 'object') pollConfig = { ...pollConfig, ...remote };
+      pollConfig = (remote && typeof remote === 'object')
+        ? { pollId: null, targetRank: 1, candidate1Id: null, candidate2Id: null, active: false, ...remote }
+        : { pollId: null, targetRank: 1, candidate1Id: null, candidate2Id: null, active: false };
+      pollVotesCache = {};
       selectedPollCandidateId = null;
       setupPollUI();
       updatePollVotesCount();
@@ -1756,7 +1773,7 @@ function deleteComment(postId, commentId) {
 
     db.ref('pollVotes').on('value', function(snapshot) {
       const all = snapshot.val() || {};
-      pollVotesCache = (all && all[pollConfig.pollId]) || {};
+      pollVotesCache = pollConfig.pollId && all[pollConfig.pollId] ? all[pollConfig.pollId] : {};
       updatePollVotesCount();
       updatePollUI();
     }, function(error) {
