@@ -1,20 +1,25 @@
 {
   "rules": {
     "posts": {
-      ".read": "auth != null",
+      ".read": true,
       ".write": "auth != null"
     },
     "votes": {
-      ".read": "auth != null",
+      ".read": true,
       ".write": "auth != null"
     },
     "pollConfig": {
-      ".read": "auth != null",
+      ".read": true,
       ".write": "auth != null && auth.token.email == 'pokrok1337@gmail.com'"
     },
     "pollVotes": {
-      ".read": "auth != null",
-      ".write": "auth != null"
+      ".read": true,
+      ".write": "auth != null && auth.token.email == 'pokrok1337@gmail.com'",
+      "$pollId": {
+        "$candidateId": {
+          ".write": "(root.child('pollConfig').child('pollId').val() == $pollId && root.child('pollConfig').child('active').val() == true && (root.child('pollConfig').child('candidate1Id').val() == $candidateId || root.child('pollConfig').child('candidate2Id').val() == $candidateId) && newData.isNumber() && newData.val() == (data.exists() ? data.val() : 0) + 1) || (auth != null && auth.token.email == 'pokrok1337@gmail.com')"
+        }
+      }
     },
     "chads": {
       ".read": true,
