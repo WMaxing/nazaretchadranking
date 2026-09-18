@@ -31,7 +31,7 @@
     <section class="card">
       <h2>Ranking</h2><p class="muted">Głosy są liczone w Firebase, a kolejność poniżej aktualizuje się automatycznie według liczby głosów. Przycisk przelicza i zapisuje pozycje także w bazie.</p>
       <div id="stats" class="statbar" style="margin-top:12px"></div>
-      <div class="actions"><button id="recalc" class="btn">🏆 Przelicz ranking</button><button id="resetVotes" class="btn danger">🔄 Wyzeruj głosy</button><button id="importSeed" class="btn secondary">📥 Importuj startowych 15</button><button id="clearAllChads" class="btn danger">🧹 Usuń wszystkich Chadów</button></div>
+      <div class="actions"><button id="recalc" class="btn">🏆 Przelicz ranking / awansuj zwycięzcę</button><button id="resetVotes" class="btn danger">🔄 Wyzeruj głosy</button><button id="importSeed" class="btn secondary">📥 Importuj startowych 15</button><button id="clearAllChads" class="btn danger">🧹 Usuń wszystkich Chadów</button></div>
     </section>
 
     <section class="card">
@@ -203,7 +203,47 @@ window.removeChad=async id=>{if(!confirm('Usunąć tego Chada?'))return;try{
   if(pollConfig.candidate1Id===id||pollConfig.candidate2Id===id){updates.pollConfig=null;if(pollConfig.pollId)updates['pollVotes/'+pollConfig.pollId]=null;}
   await db.ref().update(updates);msg('Usunięto.');
 }catch(e){alert(e.message)}};
-$('recalc').onclick=async()=>{const arr=getLiveRankedChads();const updates={};arr.forEach((c,i)=>{updates['chads/'+c.id+'/rank']=i+1;updates['rankings/'+c.id]=i+1});try{await db.ref().update(updates);msg('Ranking zapisany według aktualnej liczby głosów.')}catch(e){alert(e.message)}};
+$('recalc').onclick=async()=>{
+  try{
+    const arr=Object.keys(chads).map((id,index)=>({
+      id,
+      ...chads[id],
+      votes:Number(votes[id] ?? chads[id]?.votes ?? 0),
+      rank:Number(chads[id]?.rank)||index+1,
+      originalIndex:index
+    }));
+
+    if(!arr.length){msg('Brak Chadów do przeliczenia.');return;}
+
+    // Jeżeli istnieje bieżąca ankieta i ma wyraźnego zwycięzcę,
+    // zwycięzca awansuje dokładnie o jedno miejsce.
+    const p1=pollConfig.candidate1Id;
+    const p2=pollConfig.candidate2Id;
+    const pv1=Number(pollVotes[p1]||0);
+    const pv2=Number(pollVotes[p2]||0);
+    const hasPollWinner=!!pollConfig.pollId && pv1!==pv2 && (pv1>0 || pv2>0) && chads[p1] && chads[p2];
+
+    if(hasPollWinner){
+      arr.sort((a,b)=>a.rank-b.rank || a.originalIndex-b.originalIndex);
+      const winnerId=pv1>pv2?p1:p2;
+      const winnerIndex=arr.findIndex(c=>c.id===winnerId);
+      if(winnerIndex>0){
+        const tmp=arr[winnerIndex-1];
+        arr[winnerIndex-1]=arr[winnerIndex];
+        arr[winnerIndex]=tmp;
+      }
+      msg('Zwycięzca ankiety awansował o jedno miejsce.');
+    }else{
+      // Brak rozstrzygniętej ankiety: klasyczne przeliczenie po głosach rankingu.
+      arr.sort((a,b)=>b.votes-a.votes || a.rank-b.rank || a.originalIndex-b.originalIndex);
+      msg('Ranking przeliczony według liczby głosów.');
+    }
+
+    const updates={};
+    arr.forEach((c,i)=>{updates['chads/'+c.id+'/rank']=i+1;updates['rankings/'+c.id]=i+1});
+    await db.ref().update(updates);
+  }catch(e){alert('Nie udało się przeliczyć rankingu: '+e.message)}
+};
 $('resetVotes').onclick=async()=>{if(!confirm('Wyzerować wszystkie głosy rankingu i rozpocząć nowy tydzień?'))return;try{await db.ref('votes').remove();await db.ref('currentWeek').set('WEEK_'+new Date().toISOString().slice(0,10));votes={};render();msg('Głosy rankingu wyzerowane.')}catch(e){alert(e.message)}};
 $('importSeed').onclick=async()=>{if(!confirm('Zaimportować startowych 15 Chadów z seed.json? Istniejące rekordy o tych samych ID zostaną nadpisane.'))return;try{const seed=await fetch('seed.json').then(r=>r.json());const updates={};seed.forEach(c=>{const x={...c};delete x.id;updates['chads/'+c.id]=x});await db.ref().update(updates);msg('Zaimportowano '+seed.length+' Chadów.')}catch(e){alert('Nie udało się pobrać seed.json: '+e.message)}};
 </script>
