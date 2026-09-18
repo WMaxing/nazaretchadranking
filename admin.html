@@ -205,44 +205,76 @@ window.removeChad=async id=>{if(!confirm('Usunąć tego Chada?'))return;try{
 }catch(e){alert(e.message)}};
 $('recalc').onclick=async()=>{
   try{
-    const arr=Object.keys(chads).map((id,index)=>({
+    // Pobierz NAJNOWSZE dane prosto z Firebase w momencie kliknięcia.
+    const [chadsSnap, configSnap] = await Promise.all([
+      db.ref('chads').once('value'),
+      db.ref('pollConfig').once('value')
+    ]);
+
+    const remoteChads = chadsSnap.val() || {};
+    const remoteConfig = configSnap.val() || null;
+    const ids = Object.keys(remoteChads);
+    if(!ids.length){msg('Brak Chadów do przeliczenia.');return;}
+
+    let arr = ids.map((id, index)=>({
       id,
-      ...chads[id],
-      votes:Number(votes[id] ?? chads[id]?.votes ?? 0),
-      rank:Number(chads[id]?.rank)||index+1,
+      ...remoteChads[id],
+      votes:Number(votes[id] ?? remoteChads[id].votes ?? 0),
+      rank:Number(remoteChads[id].rank)||index+1,
       originalIndex:index
     }));
 
-    if(!arr.length){msg('Brak Chadów do przeliczenia.');return;}
+    let usedPollWinner = false;
 
-    // Jeżeli istnieje bieżąca ankieta i ma wyraźnego zwycięzcę,
-    // zwycięzca awansuje dokładnie o jedno miejsce.
-    const p1=pollConfig.candidate1Id;
-    const p2=pollConfig.candidate2Id;
-    const pv1=Number(pollVotes[p1]||0);
-    const pv2=Number(pollVotes[p2]||0);
-    const hasPollWinner=!!pollConfig.pollId && pv1!==pv2 && (pv1>0 || pv2>0) && chads[p1] && chads[p2];
+    // Jeżeli istnieje ankieta, pobierz jej wynik FRESH, niezależnie od cache panelu.
+    if(remoteConfig && remoteConfig.pollId && remoteConfig.candidate1Id && remoteConfig.candidate2Id){
+      const pollSnap = await db.ref('pollVotes/'+remoteConfig.pollId).once('value');
+      const pv = pollSnap.val() || {};
+      const p1 = remoteConfig.candidate1Id;
+      const p2 = remoteConfig.candidate2Id;
+      const v1 = Number(pv[p1] || 0);
+      const v2 = Number(pv[p2] || 0);
 
-    if(hasPollWinner){
-      arr.sort((a,b)=>a.rank-b.rank || a.originalIndex-b.originalIndex);
-      const winnerId=pv1>pv2?p1:p2;
-      const winnerIndex=arr.findIndex(c=>c.id===winnerId);
-      if(winnerIndex>0){
-        const tmp=arr[winnerIndex-1];
-        arr[winnerIndex-1]=arr[winnerIndex];
-        arr[winnerIndex]=tmp;
+      if(v1 !== v2 && (v1 > 0 || v2 > 0) && remoteChads[p1] && remoteChads[p2]){
+        const winnerId = v1 > v2 ? p1 : p2;
+
+        // Zachowaj aktualną kolejność z /chads/{id}/rank.
+        arr.sort((a,b)=>a.rank-b.rank || a.originalIndex-b.originalIndex);
+
+        const winnerIndex = arr.findIndex(c=>c.id===winnerId);
+        if(winnerIndex > 0){
+          // Zwycięzca ankiety idzie dokładnie jedno miejsce wyżej.
+          const tmp = arr[winnerIndex-1];
+          arr[winnerIndex-1] = arr[winnerIndex];
+          arr[winnerIndex] = tmp;
+        }
+        usedPollWinner = true;
       }
-      msg('Zwycięzca ankiety awansował o jedno miejsce.');
-    }else{
-      // Brak rozstrzygniętej ankiety: klasyczne przeliczenie po głosach rankingu.
+    }
+
+    // Gdy nie ma jednoznacznego zwycięzcy ankiety, zwykłe przeliczenie po /votes.
+    if(!usedPollWinner){
       arr.sort((a,b)=>b.votes-a.votes || a.rank-b.rank || a.originalIndex-b.originalIndex);
-      msg('Ranking przeliczony według liczby głosów.');
     }
 
     const updates={};
-    arr.forEach((c,i)=>{updates['chads/'+c.id+'/rank']=i+1;updates['rankings/'+c.id]=i+1});
+    arr.forEach((c,i)=>{
+      updates['chads/'+c.id+'/rank']=i+1;
+      updates['rankings/'+c.id]=i+1;
+    });
+
     await db.ref().update(updates);
-  }catch(e){alert('Nie udało się przeliczyć rankingu: '+e.message)}
+
+    // Odśwież lokalny cache panelu od razu po zapisie.
+    arr.forEach((c,i)=>{ if(chads[c.id]) chads[c.id].rank=i+1; });
+    render();
+    msg(usedPollWinner
+      ? '✅ Zwycięzca ankiety został przesunięty o jedno miejsce wyżej.'
+      : '✅ Ranking przeliczony według liczby głosów.');
+  }catch(e){
+    console.error('[Admin] recalc ERROR:',e);
+    alert('Nie udało się przeliczyć rankingu: '+e.message);
+  }
 };
 $('resetVotes').onclick=async()=>{if(!confirm('Wyzerować wszystkie głosy rankingu i rozpocząć nowy tydzień?'))return;try{await db.ref('votes').remove();await db.ref('currentWeek').set('WEEK_'+new Date().toISOString().slice(0,10));votes={};render();msg('Głosy rankingu wyzerowane.')}catch(e){alert(e.message)}};
 $('importSeed').onclick=async()=>{if(!confirm('Zaimportować startowych 15 Chadów z seed.json? Istniejące rekordy o tych samych ID zostaną nadpisane.'))return;try{const seed=await fetch('seed.json').then(r=>r.json());const updates={};seed.forEach(c=>{const x={...c};delete x.id;updates['chads/'+c.id]=x});await db.ref().update(updates);msg('Zaimportowano '+seed.length+' Chadów.')}catch(e){alert('Nie udało się pobrać seed.json: '+e.message)}};
