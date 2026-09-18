@@ -1143,12 +1143,39 @@ const hallOfFameData = [
       document.getElementById("view-community").classList.toggle("hidden", tabName !== 'community');
     }
 
+    // Ranking jest liczony na żywo na podstawie głosów z /votes.
+    // Gdy liczba głosów jest równa, zachowujemy wcześniejszą pozycję jako tie-breaker.
+    function getLiveRankedChads() {
+      if (!Array.isArray(chadsData)) return [];
+      return chadsData
+        .map(function(chad, originalIndex) {
+          return {
+            chad: chad,
+            votes: Number(currentVotesCache[chad.id] ?? chad.votes ?? 0),
+            previousRank: Number(chad.rank) || (originalIndex + 1),
+            originalIndex: originalIndex
+          };
+        })
+        .sort(function(a, b) {
+          if (b.votes !== a.votes) return b.votes - a.votes;
+          if (a.previousRank !== b.previousRank) return a.previousRank - b.previousRank;
+          return a.originalIndex - b.originalIndex;
+        })
+        .map(function(item, index) {
+          item.chad.votes = item.votes;
+          item.chad.rank = index + 1;
+          return item.chad;
+        });
+    }
+
     function renderRankings() {
       const container = document.getElementById("rankings");
       if (!container) return;
       container.innerHTML = "";
 
-      if (!Array.isArray(chadsData) || chadsData.length === 0) {
+      const rankedChads = getLiveRankedChads();
+
+      if (rankedChads.length === 0) {
         const empty = document.createElement("div");
         empty.className = "card";
         empty.style.cursor = "default";
@@ -1157,7 +1184,7 @@ const hallOfFameData = [
         return;
       }
 
-      chadsData.forEach(function(chad) {
+      rankedChads.forEach(function(chad) {
         const card = document.createElement("div");
         card.className = "card";
         card.onclick = function() { openModal(chad); };
@@ -1190,7 +1217,10 @@ const hallOfFameData = [
             '</div>' +
           '</div>' +
           '<div class="card-right">' +
-            '<span class="' + auraClass + '">' + auraText + '</span>' +
+            '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px">' +
+              '<span class="' + auraClass + '">' + auraText + '</span>' +
+              '<span style="font-size:0.68rem;color:var(--subtext)">' + Number(chad.votes || 0) + ' ' + (currentLang === 'pl' ? 'gł.' : 'votes') + '</span>' +
+            '</div>' +
             '<span class="arrow">›</span>' +
           '</div>';
 
@@ -1831,6 +1861,8 @@ function deleteComment(postId, commentId) {
           chad.votes = Number(votes[chad.id] || 0);
         });
 
+        // Każda zmiana liczby głosów automatycznie zmienia kolejność rankingu.
+        getLiveRankedChads();
         updatePollVotesCount();
         updatePollUI();
         renderRankings();
@@ -1993,26 +2025,49 @@ function deleteComment(postId, commentId) {
       document.getElementById("txt-vote").innerText = hasVoted ? i18n[currentLang].btnVoted : i18n[currentLang].btnVote;
     }
 
-    function castVote() {
-  if (!currentUser) return openAuthModal();
-  if (!activeChadId) return;
-  const chad = chadsData.find(c => c.id === activeChadId);
-  if (!chad || chad.locked) return;
+    async function castVote() {
+      if (!currentUser) return openAuthModal();
+      if (!activeChadId) return;
 
-  if (parseInt(localStorage.getItem(getStoredVoteKey(activeChadId)) || "0", 10) === 0) {
-    localStorage.setItem(getStoredVoteKey(activeChadId), "1");
+      const chad = chadsData.find(c => c.id === activeChadId);
+      if (!chad || chad.locked) return;
 
-    // 1. Zwiększamy lokalny licznik i od razu aktualizujemy cyfrę w karcie
-    chad.votes = (chad.votes || 0) + 1;
-    document.getElementById("modalStatVotes").innerText = chad.votes;
+      const voteKey = getStoredVoteKey(activeChadId);
+      if (parseInt(localStorage.getItem(voteKey) || "0", 10) > 0) return;
 
-    const weekKey = getWeekIdentifier();
-    db.ref('votes/' + activeChadId).transaction(function(c) {
-      return (c || 0) + 1; 
-    });
-    
-    updateVoteButtonState(activeChadId);
-  }
+      const btn = document.getElementById("btnVote");
+      if (btn) btn.disabled = true;
+
+      try {
+        const ref = db.ref('votes/' + activeChadId);
+        const result = await ref.transaction(function(current) {
+          return (Number(current) || 0) + 1;
+        });
+
+        if (!result.committed) {
+          throw new Error("Firebase nie zatwierdził głosu.");
+        }
+
+        const newCount = Number(result.snapshot.val() || 0);
+        currentVotesCache[activeChadId] = newCount;
+        chad.votes = newCount;
+        localStorage.setItem(voteKey, "1");
+
+        const modalVotes = document.getElementById("modalStatVotes");
+        if (modalVotes) modalVotes.innerText = newCount;
+
+        // Natychmiast przesuń Chadów według aktualnych głosów.
+        renderRankings();
+        updateVoteButtonState(activeChadId);
+
+        console.log('[Ranking] Głos zapisany:', activeChadId, newCount);
+      } catch (error) {
+        console.error('[Firebase] /votes WRITE ERROR:', error);
+        alert('Nie udało się zapisać głosu: ' + error.message);
+        updateVoteButtonState(activeChadId);
+      } finally {
+        if (btn) btn.disabled = false;
+      }
     }
     
     function closeModal() {
