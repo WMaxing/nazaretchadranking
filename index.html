@@ -1143,29 +1143,21 @@ const hallOfFameData = [
       document.getElementById("view-community").classList.toggle("hidden", tabName !== 'community');
     }
 
-    // Ranking jest liczony na żywo na podstawie głosów z /votes.
-    // Gdy liczba głosów jest równa, zachowujemy wcześniejszą pozycję jako tie-breaker.
+    // Ranking jest teraz sterowany przez zapisane pozycje /chads/{id}/rank.
+    // Głosy są wyświetlane na kartach, ale nie zmieniają kolejności automatycznie.
+    // Kolejność zmienia administrator przyciskiem „Przelicz ranking / awansuj zwycięzcę”.
     function getLiveRankedChads() {
       if (!Array.isArray(chadsData)) return [];
       return chadsData
         .map(function(chad, originalIndex) {
-          return {
-            chad: chad,
-            votes: Number(currentVotesCache[chad.id] ?? chad.votes ?? 0),
-            previousRank: Number(chad.rank) || (originalIndex + 1),
-            originalIndex: originalIndex
-          };
+          chad.votes = Number(currentVotesCache[chad.id] ?? chad.votes ?? 0);
+          return { chad: chad, rank: Number(chad.rank) || (originalIndex + 1), originalIndex: originalIndex };
         })
         .sort(function(a, b) {
-          if (b.votes !== a.votes) return b.votes - a.votes;
-          if (a.previousRank !== b.previousRank) return a.previousRank - b.previousRank;
+          if (a.rank !== b.rank) return a.rank - b.rank;
           return a.originalIndex - b.originalIndex;
         })
-        .map(function(item, index) {
-          item.chad.votes = item.votes;
-          item.chad.rank = index + 1;
-          return item.chad;
-        });
+        .map(function(item) { return item.chad; });
     }
 
     function renderRankings() {
