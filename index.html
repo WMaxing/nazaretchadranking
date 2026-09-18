@@ -1874,17 +1874,17 @@ function deleteComment(postId, commentId) {
       try { updatePollVotesCount(); updatePollUI(); } catch (e) {}
     });
 
-    // Zapisane pozycje rankingowe.
+    // /chads/{id}/rank jest jedynym źródłem kolejności rankingu.
+    // Nie nadpisujemy go starym wpisem z /rankings, który mógłby cofnąć zmianę.
     db.ref('rankings').on('value', function(snapshot) {
       try {
         const savedRankings = snapshot.val() || {};
         chadsData.forEach(chad => {
-          if (savedRankings[chad.id] !== undefined) {
+          if (!Number(chad.rank) && savedRankings[chad.id] !== undefined) {
             chad.rank = Number(savedRankings[chad.id]);
           }
         });
         renderRankings();
-        setupPollUI();
       } catch (error) {
         console.error('[Firebase] /rankings render ERROR:', error);
       }
