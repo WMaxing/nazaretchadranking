@@ -1319,6 +1319,7 @@ const hallOfFameData = [
     }
 
     function selectPollOption(candidateId) {
+      if (!currentUser) { openAuthModal(); return; }
       if (!pollConfig.active || !pollConfig.pollId) return;
       if (![pollConfig.candidate1Id, pollConfig.candidate2Id].includes(candidateId)) return;
       if (localStorage.getItem("poll_voted_" + pollConfig.pollId) === "1") return;
@@ -1390,6 +1391,16 @@ const hallOfFameData = [
         return;
       }
 
+      if (!currentUser) {
+        res1.style.display = "none";
+        res2.style.display = "none";
+        bar1.style.width = "0%";
+        bar2.style.width = "0%";
+        btn.disabled = false;
+        document.getElementById("txt-poll-btn").innerText = currentLang === "pl" ? "🔐 Zaloguj się, aby zagłosować" : "🔐 Log in to vote";
+        return;
+      }
+
       if (hasVoted) {
         res1.style.display = "flex";
         res2.style.display = "flex";
@@ -1412,6 +1423,7 @@ const hallOfFameData = [
     }
 
     async function castPollVote() {
+      if (!currentUser) { openAuthModal(); return; }
       if (!pollConfig.active || !pollConfig.pollId || !selectedPollCandidateId) return;
       if (![pollConfig.candidate1Id, pollConfig.candidate2Id].includes(selectedPollCandidateId)) return;
 
@@ -2014,6 +2026,14 @@ function deleteComment(postId, commentId) {
       btn.style.display = "inline-flex";
       const hasVoted = parseInt(localStorage.getItem(getStoredVoteKey(id)) || "0", 10) > 0;
       btn.classList.toggle("voted", hasVoted);
+      if (!currentUser) {
+        btn.disabled = false;
+        btn.style.opacity = "0.75";
+        document.getElementById("txt-vote").innerText = currentLang === "pl" ? "🔐 Zaloguj się, aby zagłosować" : "🔐 Log in to vote";
+        return;
+      }
+      btn.disabled = false;
+      btn.style.opacity = "1";
       document.getElementById("txt-vote").innerText = hasVoted ? i18n[currentLang].btnVoted : i18n[currentLang].btnVote;
     }
 
