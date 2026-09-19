@@ -960,6 +960,11 @@ auth.onAuthStateChanged((user) => {
   currentUser = user;
   updateAuthUI();
   renderPosts();
+
+  // Po zalogowaniu/wylogowaniu od razu odświeżamy stan głosowania,
+  // bez potrzeby ręcznego przeładowywania całej strony.
+  updatePollUI();
+  if (activeChadId) updateVoteButtonState(activeChadId);
 });
     // Ankieta i Chadzi są w 100% sterowani przez Firebase.
     // Brak danych w Firebase = brak domyślnej ankiety i brak domyślnych Chadów.
