@@ -485,6 +485,16 @@
     .name { font-size: 0.95rem; font-weight: 700; color: var(--text); }
     .subtext { font-size: 0.75rem; color: var(--subtext); margin-top: 2px; }
 
+    .name-row { display: flex; align-items: center; gap: 7px; min-width: 0; flex-wrap: wrap; }
+    .rank-movement {
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 0.68rem; font-weight: 800; line-height: 1;
+      padding: 5px 7px; border-radius: 999px; white-space: nowrap;
+    }
+    .rank-movement-up { background: rgba(52, 211, 153, 0.10); color: #6ee7b7; }
+    .rank-movement-down { background: rgba(248, 113, 113, 0.10); color: #fca5a5; }
+    .rank-movement-flat { background: rgba(148, 163, 184, 0.10); color: #94a3b8; }
+
     .card-right { display: flex; align-items: center; gap: 8px; }
 
     .aura-pill {
@@ -929,6 +939,9 @@
     let activeChadId = null;
     let currentUser = null;
     let currentVotesCache = {};
+    let rankHistoryCache = {};
+    let rankHistoryInitialized = false;
+    let rankHistoryWriteInProgress = false;
     let selectedPollCandidateId = null;
     let postsDataCache = {};
     
@@ -1020,6 +1033,10 @@ const hallOfFameData = [
         unrevealedDesc: "Opis profilu pojawi się po oficjalnym ujawnieniu.",
         stRank: "Ranga",
         stVotes: "Głosy",
+        movementUp: "miejsca w górę",
+        movementDown: "miejsca w dół",
+        movementNone: "bez zmiany",
+        movementNoData: "brak danych",
         btnVote: "🔥 Daj Głos",
         btnVoted: "✅ Zagłosowano",
         pollTitle: "Kto powinien zająć miejsce #" + pollConfig.targetRank + "?",
@@ -1073,6 +1090,10 @@ const hallOfFameData = [
         unrevealedDesc: "Profile description will appear after the official reveal.",
         stRank: "Rank",
         stVotes: "Votes",
+        movementUp: "places up",
+        movementDown: "places down",
+        movementNone: "no change",
+        movementNoData: "no data",
         btnVote: "🔥 Upvote",
         btnVoted: "✅ Voted",
         pollTitle: "Who should be #" + pollConfig.targetRank + " Nazaret Ranked Chad?",
@@ -1165,9 +1186,7 @@ const hallOfFameData = [
           };
         })
         .sort(function(a, b) {
-          // Najwięcej zwykłych głosów = najwyższe miejsce.
           if (b.votes !== a.votes) return b.votes - a.votes;
-          // Remis: zachowaj dotychczasową kolejność.
           if (a.savedRank !== b.savedRank) return a.savedRank - b.savedRank;
           return a.originalIndex - b.originalIndex;
         })
@@ -1175,6 +1194,88 @@ const hallOfFameData = [
           item.chad.rank = index + 1;
           return item.chad;
         });
+    }
+
+    // Historia pozycji jest zapisywana co godzinę w Firebase. Dzięki temu
+    // można pokazać zmianę pozycji względem stanu sprzed około 24 godzin.
+    function getCurrentRankMap() {
+      const map = {};
+      getLiveRankedChads().forEach(function(chad) {
+        map[chad.id] = Number(chad.rank);
+      });
+      return map;
+    }
+
+    function getRankMovement(chadId, currentRank) {
+      const timestamps = Object.keys(rankHistoryCache || {})
+        .map(Number)
+        .filter(Number.isFinite)
+        .sort(function(a, b) { return b - a; });
+
+      if (!timestamps.length) return null;
+
+      const target = Date.now() - (24 * 60 * 60 * 1000);
+      // Wybieramy najnowszy snapshot, który jest co najmniej 24h stary.
+      const previousTimestamp = timestamps.find(function(ts) { return ts <= target; });
+      if (!previousTimestamp) return null;
+
+      const previousRank = Number(rankHistoryCache[previousTimestamp] && rankHistoryCache[previousTimestamp][chadId]);
+      if (!previousRank || !currentRank) return null;
+
+      // Dodatnia wartość = awans, ujemna = spadek.
+      return previousRank - Number(currentRank);
+    }
+
+    function getMovementHTML(chadId, currentRank) {
+      const movement = getRankMovement(chadId, currentRank);
+      if (movement === null) return '';
+
+      if (movement > 0) {
+        return '<span class="rank-movement rank-movement-up" title="' + movement + ' ' + i18n[currentLang].movementUp + '">↗ +' + movement + '</span>';
+      }
+      if (movement < 0) {
+        return '<span class="rank-movement rank-movement-down" title="' + Math.abs(movement) + ' ' + i18n[currentLang].movementDown + '">↘ ' + movement + '</span>';
+      }
+      return '<span class="rank-movement rank-movement-flat" title="' + i18n[currentLang].movementNone + '">→ 0</span>';
+    }
+
+    async function refreshRankHistory() {
+      if (!chadsData.length || rankHistoryWriteInProgress) return;
+
+      try {
+        const ref = db.ref('rankHistory');
+        const snapshot = await ref.once('value');
+        const history = snapshot.val() || {};
+        rankHistoryCache = history;
+
+        const timestamps = Object.keys(history).map(Number).filter(Number.isFinite).sort(function(a, b) { return b - a; });
+        const now = Date.now();
+        const hourKey = String(Math.floor(now / 3600000) * 3600000);
+        const latest = timestamps[0] || 0;
+
+        if (latest < Number(hourKey)) {
+          rankHistoryWriteInProgress = true;
+          const currentRanks = getCurrentRankMap();
+          const updates = {};
+          updates[hourKey] = currentRanks;
+
+          // Trzymaj maksymalnie 7 dni historii (168 snapshotów godzinowych).
+          timestamps.slice(168).forEach(function(ts) {
+            updates[ts] = null;
+          });
+
+          await ref.update(updates);
+          rankHistoryCache[hourKey] = currentRanks;
+          timestamps.slice(168).forEach(function(ts) { delete rankHistoryCache[ts]; });
+        }
+
+        rankHistoryInitialized = true;
+        renderRankings();
+      } catch (error) {
+        console.warn('[Firebase] rankHistory skipped:', error.message);
+      } finally {
+        rankHistoryWriteInProgress = false;
+      }
     }
 
     function renderRankings() {
@@ -1221,7 +1322,10 @@ const hallOfFameData = [
             '<div class="' + rankClass + '">' + chad.rank + '</div>' +
             avatarHTML +
             '<div class="info">' +
-              '<span class="name">' + nameText + '</span>' +
+              '<div class="name-row">' +
+                '<span class="name">' + nameText + '</span>' +
+                getMovementHTML(chad.id, chad.rank) +
+              '</div>' +
               '<span class="subtext">' + subText + '</span>' +
             '</div>' +
           '</div>' +
@@ -1888,6 +1992,7 @@ function deleteComment(postId, commentId) {
         updatePollUI();
         renderRankings();
         setupPollUI();
+        refreshRankHistory();
 
         if (activeChadId !== null) {
           const activeChad = chadsData.find(c => c.id === activeChadId);
@@ -2134,6 +2239,7 @@ function deleteComment(postId, commentId) {
     setupPollUI();
     renderRankings();
     renderHallOfFame();
+    refreshRankHistory();
     updateAuthUI();
     updateCountdown();
     setInterval(updateCountdown, 1000);
