@@ -982,12 +982,12 @@ auth.onAuthStateChanged((user) => {
 const hallOfFameData = [
       {
         id: "hof_1",
-        name: "Olgierd",
-        rolePl: "Horyzontalny Dominator",
-        roleEn: "The Skyline Mogger",
-        img: "olgierd.jpg",
-        descPl: "Gdyby architektura ludzkiego ciała miała swój absolutny punkt odniesienia, byłby nim Olgierd. To nie jest zwykły uczestnik rankingu — to żywy monument, przy którym pojęcie height-moggingu nabiera wręcz kosmicznego wymiaru. Standing at astronomical heights, Olgierd patrzy na całe Nazareth z perspektywy chmur, sprawiając, że grawitacja i proporcje otoczenia zaginają się wokół jego potężnej sylwetki. Jego linia szczęki mogłaby przecinać diamenty, a porażające hunter eyes sprawiają, że sam kontakt wzrokowy natychmiastowo zeruje punkty aury każdego w promieniu kilometra. Olgierd nie musi robić absolutnie nic — po prostu istnieje, oddycha i swoją bezwysiłkową obecnością definiuje, czym jest ostateczny god-tier status. W Sali Legend Chads of Nazareth nie ma dla niego numeru. On nie rywalizuje z nikim — on jest fundamentem, na którym ten ranking w ogóle powstał.",
-        descEn: "If human anatomy had an absolute peak benchmark, it would be Olgierd. He is not merely a contestant in this ranking — he is a living monument that elevates height-mogging to a cosmic scale. Standing at astronomical heights, Olgierd looks down upon all of Nazareth from the clouds, causing gravity and spatial proportions to bend around his imposing frame. His jawline could slice through solid diamond, and his striking hunter eyes reset the aura score of anyone within a one-mile radius upon simple eye contact. Olgierd doesn't need to do a single thing — he simply exists, breathes, and through his effortless presence defines ultimate god-tier status. In the Chads of Nazareth Hall of Legends, no number can contain him. He doesn't compete with anyone — he is the very foundation upon which this ranking was built."
+        name: "NIEUJAWNIONE",
+        rolePl: "",
+        roleEn: "",
+        img: "Question_mark.png",
+        descPl: "",
+        descEn: ""
       },
       {
         id: "hof_2",
@@ -1148,21 +1148,33 @@ const hallOfFameData = [
       document.getElementById("view-community").classList.toggle("hidden", tabName !== 'community');
     }
 
-    // Ranking jest teraz sterowany przez zapisane pozycje /chads/{id}/rank.
-    // Głosy są wyświetlane na kartach, ale nie zmieniają kolejności automatycznie.
-    // Kolejność zmienia administrator przyciskiem „Przelicz ranking / awansuj zwycięzcę”.
+    // Ranking na stronie głównej jest liczony NA ŻYWO na podstawie zwykłych głosów z /votes.
+    // Głosy z ankiety (/pollVotes) nie mają wpływu na ten ranking.
+    // Przy tej samej liczbie głosów zachowujemy zapisane miejsce /chads/{id}/rank.
     function getLiveRankedChads() {
       if (!Array.isArray(chadsData)) return [];
       return chadsData
         .map(function(chad, originalIndex) {
-          chad.votes = Number(currentVotesCache[chad.id] ?? chad.votes ?? 0);
-          return { chad: chad, rank: Number(chad.rank) || (originalIndex + 1), originalIndex: originalIndex };
+          const liveVotes = Number(currentVotesCache[chad.id] ?? chad.votes ?? 0);
+          chad.votes = liveVotes;
+          return {
+            chad: chad,
+            votes: liveVotes,
+            savedRank: Number(chad.rank) || (originalIndex + 1),
+            originalIndex: originalIndex
+          };
         })
         .sort(function(a, b) {
-          if (a.rank !== b.rank) return a.rank - b.rank;
+          // Najwięcej zwykłych głosów = najwyższe miejsce.
+          if (b.votes !== a.votes) return b.votes - a.votes;
+          // Remis: zachowaj dotychczasową kolejność.
+          if (a.savedRank !== b.savedRank) return a.savedRank - b.savedRank;
           return a.originalIndex - b.originalIndex;
         })
-        .map(function(item) { return item.chad; });
+        .map(function(item, index) {
+          item.chad.rank = index + 1;
+          return item.chad;
+        });
     }
 
     function renderRankings() {
@@ -1891,8 +1903,8 @@ function deleteComment(postId, commentId) {
       try { updatePollVotesCount(); updatePollUI(); } catch (e) {}
     });
 
-    // /chads/{id}/rank jest jedynym źródłem kolejności rankingu.
-    // Nie nadpisujemy go starym wpisem z /rankings, który mógłby cofnąć zmianę.
+    // /chads/{id}/rank jest używany jako kolejność rozstrzygająca remisy.
+    // Faktyczna kolejność na stronie jest liczona na żywo z /votes.
     db.ref('rankings').on('value', function(snapshot) {
       try {
         const savedRankings = snapshot.val() || {};
