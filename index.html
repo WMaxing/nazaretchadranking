@@ -486,14 +486,44 @@
     .subtext { font-size: 0.75rem; color: var(--subtext); margin-top: 2px; }
 
     .name-row { display: flex; align-items: center; gap: 7px; min-width: 0; flex-wrap: wrap; }
+    /* Ruch rankingu — styl jak na przesłanym screenie: mała, ciemna kapsułka
+       z delikatnym zielonym wykresem i liczbą miejsc. */
     .rank-movement {
-      display: inline-flex; align-items: center; justify-content: center;
-      font-size: 0.68rem; font-weight: 800; line-height: 1;
-      padding: 5px 7px; border-radius: 999px; white-space: nowrap;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      min-width: 42px;
+      height: 23px;
+      box-sizing: border-box;
+      padding: 0 7px;
+      border-radius: 999px;
+      font-size: 0.66rem;
+      font-weight: 800;
+      line-height: 1;
+      letter-spacing: .01em;
+      white-space: nowrap;
+      vertical-align: middle;
+      border: 0;
     }
-    .rank-movement-up { background: rgba(52, 211, 153, 0.10); color: #6ee7b7; }
-    .rank-movement-down { background: rgba(248, 113, 113, 0.10); color: #fca5a5; }
-    .rank-movement-flat { background: rgba(148, 163, 184, 0.10); color: #94a3b8; }
+    .rank-movement-icon {
+      width: 12px;
+      height: 12px;
+      display: block;
+      flex: 0 0 12px;
+    }
+    .rank-movement-up {
+      background: rgba(52, 211, 153, 0.12);
+      color: #62d8ad;
+    }
+    .rank-movement-down {
+      background: rgba(248, 113, 113, 0.12);
+      color: #f58b8b;
+    }
+    .rank-movement-flat {
+      background: rgba(148, 163, 184, 0.10);
+      color: #94a3b8;
+    }
 
     .card-right { display: flex; align-items: center; gap: 8px; }
 
@@ -1212,42 +1242,71 @@ const hallOfFameData = [
         .filter(Number.isFinite)
         .sort(function(a, b) { return b - a; });
 
-      if (!timestamps.length) return null;
+      if (!timestamps.length || !currentRank) return null;
 
       const now = Date.now();
       const target = now - (24 * 60 * 60 * 1000);
+      const dayAgo = timestamps.find(function(ts) { return ts <= target; });
 
-      // Bierzemy snapshot możliwie najbliższy 24h wstecz.
-      // Jeśli mamy już snapshot starszy niż 24h, używamy najnowszego z nich.
-      const previousTimestamp = timestamps.find(function(ts) { return ts <= target; });
+      // Normalnie porównujemy dokładnie ze stanem sprzed ~24 h.
+      // Jeśli strona nie była odwiedzana przez pełne 24 h, bierzemy najstarszy
+      // dostępny snapshot z ostatnich 24 h — dzięki temu plakietka działa od razu
+      // po rozpoczęciu zbierania historii i po 24 h automatycznie przechodzi
+      // na właściwe porównanie 24-godzinne.
+      let previousTimestamp = dayAgo;
+      if (!previousTimestamp) {
+        const recent = timestamps.filter(function(ts) {
+          return ts < now && ts >= now - (24 * 60 * 60 * 1000);
+        });
+        previousTimestamp = recent.length ? recent[recent.length - 1] : null;
+      }
+
       if (!previousTimestamp) return null;
 
       const previousRank = Number(
         rankHistoryCache[previousTimestamp] &&
         rankHistoryCache[previousTimestamp][chadId]
       );
-      if (!previousRank || !currentRank) return null;
+      if (!previousRank) return null;
 
       // Dodatnia wartość = awans, ujemna = spadek.
       return previousRank - Number(currentRank);
     }
 
+    function movementIcon(direction) {
+      // Mały wykres/strzałka zamiast zwykłego znaku ↗/↘.
+      const points = direction === 'up'
+        ? '1,10 4,8 6,9 9,4 11,5'
+        : direction === 'down'
+          ? '1,4 4,6 6,5 9,10 11,9'
+          : '1,6 11,6';
+      const arrow = direction === 'up'
+        ? '<path d="M8.5 4H11v2.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>'
+        : direction === 'down'
+          ? '<path d="M8.5 10H11V7.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>'
+          : '';
+      return '<svg class="rank-movement-icon" viewBox="0 0 12 12" aria-hidden="true">' +
+        '<polyline points="' + points + '" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"/>' +
+        arrow +
+        '</svg>';
+    }
+
     function getMovementHTML(chadId, currentRank) {
       const movement = getRankMovement(chadId, currentRank);
 
-      // Nie pokazujemy fikcyjnej zmiany, zanim Firebase nie ma pełnych
-      // danych z poprzednich ~24 godzin.
-      if (movement === null) {
-        return '<span class="rank-movement rank-movement-flat" title="' + i18n[currentLang].movementNoData + '">↔ —</span>';
-      }
+      // Brak danych = nic nie pokazujemy. Nie ma już dziwnego ↔/—.
+      if (movement === null) return '';
 
       if (movement > 0) {
-        return '<span class="rank-movement rank-movement-up" title="' + movement + ' ' + i18n[currentLang].movementUp + '">↗ +' + movement + '</span>';
+        return '<span class="rank-movement rank-movement-up" title="+' + movement + ' ' + i18n[currentLang].movementUp + '">' +
+          movementIcon('up') + '<span>+' + movement + '</span></span>';
       }
       if (movement < 0) {
-        return '<span class="rank-movement rank-movement-down" title="' + Math.abs(movement) + ' ' + i18n[currentLang].movementDown + '">↘ ' + movement + '</span>';
+        return '<span class="rank-movement rank-movement-down" title="' + movement + ' ' + i18n[currentLang].movementDown + '">' +
+          movementIcon('down') + '<span>' + movement + '</span></span>';
       }
-      return '<span class="rank-movement rank-movement-flat" title="' + i18n[currentLang].movementNone + '">→ 0</span>';
+      return '<span class="rank-movement rank-movement-flat" title="' + i18n[currentLang].movementNone + '">' +
+        movementIcon('flat') + '<span>0</span></span>';
     }
 
     async function refreshRankHistory() {
@@ -1290,9 +1349,35 @@ const hallOfFameData = [
           });
         }
 
+        // Lokalny cache jest tylko kopią awaryjną / pomocniczą.
+        try {
+          const localKey = 'nazaret_rank_history_v1';
+          const localHistory = JSON.parse(localStorage.getItem(localKey) || '{}');
+          const localNowKey = String(Math.floor(Date.now() / 3600000) * 3600000);
+          localHistory[localNowKey] = getCurrentRankMap();
+          const localKeys = Object.keys(localHistory).map(Number).sort(function(a,b){ return b-a; });
+          localKeys.slice(168).forEach(function(ts){ delete localHistory[String(ts)]; });
+          localStorage.setItem(localKey, JSON.stringify(localHistory));
+          if (Object.keys(rankHistoryCache).length === 0) rankHistoryCache = localHistory;
+        } catch (localError) {}
+
         rankHistoryInitialized = true;
         renderRankings();
       } catch (error) {
+        // Awaryjnie zachowujemy historię lokalnie. Dzięki temu plakietka nie
+        // znika całkowicie, gdy reguły Firebase chwilowo blokują rankHistory.
+        try {
+          const localKey = 'nazaret_rank_history_v1';
+          const localHistory = JSON.parse(localStorage.getItem(localKey) || '{}');
+          const nowKey = String(Math.floor(Date.now() / 3600000) * 3600000);
+          localHistory[nowKey] = getCurrentRankMap();
+          const localKeys = Object.keys(localHistory).map(Number).sort(function(a,b){ return b-a; });
+          localKeys.slice(168).forEach(function(ts){ delete localHistory[String(ts)]; });
+          localStorage.setItem(localKey, JSON.stringify(localHistory));
+          rankHistoryCache = localHistory;
+          rankHistoryInitialized = true;
+          renderRankings();
+        } catch (localError) {}
         console.warn('[Firebase] rankHistory skipped:', error.message);
       } finally {
         rankHistoryWriteInProgress = false;
