@@ -1214,12 +1214,18 @@ const hallOfFameData = [
 
       if (!timestamps.length) return null;
 
-      const target = Date.now() - (24 * 60 * 60 * 1000);
-      // Wybieramy najnowszy snapshot, który jest co najmniej 24h stary.
+      const now = Date.now();
+      const target = now - (24 * 60 * 60 * 1000);
+
+      // Bierzemy snapshot możliwie najbliższy 24h wstecz.
+      // Jeśli mamy już snapshot starszy niż 24h, używamy najnowszego z nich.
       const previousTimestamp = timestamps.find(function(ts) { return ts <= target; });
       if (!previousTimestamp) return null;
 
-      const previousRank = Number(rankHistoryCache[previousTimestamp] && rankHistoryCache[previousTimestamp][chadId]);
+      const previousRank = Number(
+        rankHistoryCache[previousTimestamp] &&
+        rankHistoryCache[previousTimestamp][chadId]
+      );
       if (!previousRank || !currentRank) return null;
 
       // Dodatnia wartość = awans, ujemna = spadek.
@@ -1228,7 +1234,12 @@ const hallOfFameData = [
 
     function getMovementHTML(chadId, currentRank) {
       const movement = getRankMovement(chadId, currentRank);
-      if (movement === null) return '';
+
+      // Nie pokazujemy fikcyjnej zmiany, zanim Firebase nie ma pełnych
+      // danych z poprzednich ~24 godzin.
+      if (movement === null) {
+        return '<span class="rank-movement rank-movement-flat" title="' + i18n[currentLang].movementNoData + '">↔ —</span>';
+      }
 
       if (movement > 0) {
         return '<span class="rank-movement rank-movement-up" title="' + movement + ' ' + i18n[currentLang].movementUp + '">↗ +' + movement + '</span>';
@@ -1248,25 +1259,35 @@ const hallOfFameData = [
         const history = snapshot.val() || {};
         rankHistoryCache = history;
 
-        const timestamps = Object.keys(history).map(Number).filter(Number.isFinite).sort(function(a, b) { return b - a; });
+        const timestamps = Object.keys(history)
+          .map(Number)
+          .filter(Number.isFinite)
+          .sort(function(a, b) { return b - a; });
+
         const now = Date.now();
+        // Jeden wspólny snapshot na godzinę. Dzięki temu historia nie zależy
+        // od tego, czy ktoś akurat oddał głos.
         const hourKey = String(Math.floor(now / 3600000) * 3600000);
         const latest = timestamps[0] || 0;
 
         if (latest < Number(hourKey)) {
           rankHistoryWriteInProgress = true;
+
           const currentRanks = getCurrentRankMap();
           const updates = {};
           updates[hourKey] = currentRanks;
 
           // Trzymaj maksymalnie 7 dni historii (168 snapshotów godzinowych).
-          timestamps.slice(168).forEach(function(ts) {
+          timestamps.slice(167).forEach(function(ts) {
             updates[ts] = null;
           });
 
           await ref.update(updates);
+
           rankHistoryCache[hourKey] = currentRanks;
-          timestamps.slice(168).forEach(function(ts) { delete rankHistoryCache[ts]; });
+          timestamps.slice(167).forEach(function(ts) {
+            delete rankHistoryCache[ts];
+          });
         }
 
         rankHistoryInitialized = true;
@@ -2240,6 +2261,9 @@ function deleteComment(postId, commentId) {
     renderRankings();
     renderHallOfFame();
     refreshRankHistory();
+    // Odśwież historię co 5 minut, nawet gdy nikt nie oddaje głosu.
+    // Dzięki temu po 24h zawsze istnieje odpowiedni snapshot do porównania.
+    setInterval(refreshRankHistory, 5 * 60 * 1000);
     updateAuthUI();
     updateCountdown();
     setInterval(updateCountdown, 1000);
