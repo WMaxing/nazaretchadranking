@@ -961,6 +961,8 @@
         <button class="auth-btn-small" style="flex:1; padding: 10px;" onclick="handleLogin()" id="txt-login-btn">Zaloguj</button>
         <button class="auth-btn-small" style="flex:1; padding: 10px; background: rgba(255,255,255,0.1);" onclick="handleRegister()" id="txt-register-btn">Zarejestruj</button>
       </div>
+      <button class="auth-btn-small" style="width:100%; margin-top:10px; padding:9px; background:rgba(255,255,255,0.06);" onclick="resendVerificationEmail()" id="txt-resend-verification-btn">Wyślij ponownie e-mail weryfikacyjny</button>
+      <div id="emailVerificationHint" style="margin-top:10px; font-size:0.72rem; line-height:1.35; color:var(--subtext); text-align:center;">Musisz potwierdzić e-mail, aby korzystać z konta.</div>
     </div>
   </div>
 
@@ -1000,6 +1002,17 @@ const auth = firebase.auth();
 
 // Automatyczne wykrywanie sesji zalogowanego użytkownika
 auth.onAuthStateChanged((user) => {
+  // Konto bez zweryfikowanego e-maila nie może korzystać ze strony.
+  if (user && !user.emailVerified) {
+    currentUser = null;
+    updateAuthUI();
+    renderPosts();
+    updatePollUI();
+    if (activeChadId) updateVoteButtonState(activeChadId);
+    auth.signOut().catch(() => {});
+    return;
+  }
+
   currentUser = user;
   updateAuthUI();
   renderPosts();
@@ -1096,6 +1109,11 @@ const hallOfFameData = [
         usernamePlaceholder: "Twój Nick / Pseudonim",
         emailPlaceholder: "E-mail",
         passwordPlaceholder: "Hasło",
+        verificationRequired: "Musisz potwierdzić adres e-mail, aby korzystać z konta.",
+        verificationSent: "Wysłaliśmy link weryfikacyjny na Twój e-mail. Sprawdź skrzynkę i spam.",
+        verificationResent: "E-mail weryfikacyjny został wysłany ponownie.",
+        verificationLoginError: "Ten e-mail nie został jeszcze zweryfikowany. Wysłaliśmy nowy link weryfikacyjny.",
+        verificationResendError: "Najpierw zaloguj się na konto, aby wysłać ponownie e-mail weryfikacyjny.",
         modalLoginBtn: "Zaloguj",
         modalRegisterBtn: "Zarejestruj",
         deleteBtn: "Usuń",
@@ -1153,6 +1171,11 @@ const hallOfFameData = [
         usernamePlaceholder: "Your Nick / Pseudonym",
         emailPlaceholder: "E-mail",
         passwordPlaceholder: "Password",
+        verificationRequired: "You must verify your email address before using your account.",
+        verificationSent: "We sent a verification link to your email. Check your inbox and spam folder.",
+        verificationResent: "The verification email has been sent again.",
+        verificationLoginError: "This email is not verified yet. We sent a new verification link.",
+        verificationResendError: "Sign in to the account first to resend the verification email.",
         modalLoginBtn: "Log In",
         modalRegisterBtn: "Register",
         deleteBtn: "Delete",
@@ -1736,29 +1759,85 @@ const hallOfFameData = [
     }
     
     
-    function handleLogin() {
+    async function handleLogin() {
       const email = document.getElementById("authEmail").value.trim();
       const pass = document.getElementById("authPassword").value.trim();
 
-      if (!email || !pass) return alert(currentLang === "pl" ? "Wypełnij e-mail i hasło!" : "Please fill in email and password!");
+      if (!email || !pass) {
+        return alert(currentLang === "pl" ? "Wypełnij e-mail i hasło!" : "Please fill in email and password!");
+      }
 
-      auth.signInWithEmailAndPassword(email, pass)
-        .then(() => closeAuthModal())
-        .catch(err => alert((currentLang === "pl" ? "Błąd logowania: " : "Login error: ") + err.message));
+      try {
+        const cred = await auth.signInWithEmailAndPassword(email, pass);
+        await cred.user.reload();
+
+        if (!cred.user.emailVerified) {
+          try {
+            await cred.user.sendEmailVerification();
+          } catch (verificationError) {
+            console.warn("[Auth] verification email could not be resent:", verificationError);
+          }
+          await auth.signOut();
+          return alert(i18n[currentLang].verificationLoginError);
+        }
+
+        closeAuthModal();
+      } catch (err) {
+        alert((currentLang === "pl" ? "Błąd logowania: " : "Login error: ") + err.message);
+      }
     }
 
-    function handleRegister() {
+    async function handleRegister() {
       const nick = document.getElementById("authUsername").value.trim();
       const email = document.getElementById("authEmail").value.trim();
       const pass = document.getElementById("authPassword").value.trim();
 
-      if (!email || !pass) return alert(currentLang === "pl" ? "Wypełnij e-mail i hasło!" : "Please fill in email and password!");
-      if (!nick) return alert(currentLang === "pl" ? "Wpisz swój nick!" : "Please enter your username!");
+      if (!email || !pass) {
+        return alert(currentLang === "pl" ? "Wypełnij e-mail i hasło!" : "Please fill in email and password!");
+      }
+      if (!nick) {
+        return alert(currentLang === "pl" ? "Wpisz swój nick!" : "Please enter your username!");
+      }
+      if (pass.length < 6) {
+        return alert(currentLang === "pl" ? "Hasło musi mieć co najmniej 6 znaków." : "Password must be at least 6 characters.");
+      }
 
-      auth.createUserWithEmailAndPassword(email, pass)
-        .then((cred) => cred.user.updateProfile({ displayName: nick }))
-        .then(() => closeAuthModal())
-        .catch(err => alert((currentLang === "pl" ? "Błąd rejestracji: " : "Registration error: ") + err.message));
+      try {
+        const cred = await auth.createUserWithEmailAndPassword(email, pass);
+        await cred.user.updateProfile({ displayName: nick });
+        await cred.user.sendEmailVerification();
+
+        await auth.signOut();
+        closeAuthModal();
+        alert(i18n[currentLang].verificationSent);
+      } catch (err) {
+        alert((currentLang === "pl" ? "Błąd rejestracji: " : "Registration error: ") + err.message);
+      }
+    }
+
+    async function resendVerificationEmail() {
+      const email = document.getElementById("authEmail").value.trim();
+      const pass = document.getElementById("authPassword").value.trim();
+
+      if (!email || !pass) {
+        return alert(i18n[currentLang].verificationResendError);
+      }
+
+      try {
+        const cred = await auth.signInWithEmailAndPassword(email, pass);
+        await cred.user.reload();
+
+        if (cred.user.emailVerified) {
+          closeAuthModal();
+          return alert(currentLang === "pl" ? "Ten adres e-mail jest już zweryfikowany." : "This email address is already verified.");
+        }
+
+        await cred.user.sendEmailVerification();
+        await auth.signOut();
+        alert(i18n[currentLang].verificationResent);
+      } catch (err) {
+        alert((currentLang === "pl" ? "Nie udało się wysłać e-maila: " : "Could not resend verification email: ") + err.message);
+      }
     }
 
     async function uploadImage(file) {
@@ -2193,6 +2272,10 @@ function deleteComment(postId, commentId) {
       document.getElementById("authPassword").placeholder = i18n[lang].passwordPlaceholder;
       document.getElementById("txt-login-btn").innerText = i18n[lang].modalLoginBtn;
       document.getElementById("txt-register-btn").innerText = i18n[lang].modalRegisterBtn;
+      const verificationHint = document.getElementById("emailVerificationHint");
+      if (verificationHint) verificationHint.innerText = i18n[lang].verificationRequired;
+      const resendVerificationBtn = document.getElementById("txt-resend-verification-btn");
+      if (resendVerificationBtn) resendVerificationBtn.innerText = lang === "pl" ? "Wyślij ponownie e-mail weryfikacyjny" : "Resend verification email";
 
       setupPollUI();
       renderRankings();
