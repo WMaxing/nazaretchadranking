@@ -1286,10 +1286,29 @@ const hallOfFameData = [
 
       if (!previousTimestamp) return null;
 
-      const previousRank = Number(
+      // Najpierw próbujemy porównać ze stanem sprzed ~24 h.
+      let previousRank = Number(
         rankHistoryCache[previousTimestamp] &&
         rankHistoryCache[previousTimestamp][chadId]
       );
+
+      // NOWY CHAD: jeżeli nie istniał jeszcze 24 h temu, jego ID nie będzie
+      // obecne w tym snapshotcie. Szukamy więc najnowszego starszego snapshotu,
+      // w którym ten konkretny Chad już występował. Dzięki temu nowo dodany Chad
+      // dostaje własny punkt odniesienia i zaczyna pokazywać ruch po przesunięciu.
+      if (!previousRank) {
+        for (let i = 0; i < timestamps.length; i++) {
+          const ts = timestamps[i];
+          if (ts >= now) continue;
+          const snapshot = rankHistoryCache[ts];
+          const rank = snapshot && Number(snapshot[chadId]);
+          if (rank) {
+            previousRank = rank;
+            break;
+          }
+        }
+      }
+
       if (!previousRank) return null;
 
       // Dodatnia wartość = awans, ujemna = spadek.
@@ -1352,12 +1371,31 @@ const hallOfFameData = [
         const hourKey = String(Math.floor(now / 3600000) * 3600000);
         const latest = timestamps[0] || 0;
 
-        if (latest < Number(hourKey)) {
+        const currentRanks = getCurrentRankMap();
+        const currentHourSnapshot = rankHistoryCache[hourKey] || null;
+
+        // Zapisujemy nową godzinę normalnie. Jeżeli snapshot dla bieżącej
+        // godziny już istnieje, dopisujemy tylko Chadów, których wcześniej w nim
+        // nie było. To jest kluczowe dla nowo dodanych Chadów: nie muszą czekać
+        // do następnej godziny, żeby dostać pierwszy punkt odniesienia.
+        const missingNewChads = {};
+        Object.keys(currentRanks).forEach(function(chadId) {
+          if (!currentHourSnapshot || currentHourSnapshot[chadId] === undefined) {
+            missingNewChads[chadId] = currentRanks[chadId];
+          }
+        });
+
+        if (latest < Number(hourKey) || Object.keys(missingNewChads).length > 0) {
           rankHistoryWriteInProgress = true;
 
-          const currentRanks = getCurrentRankMap();
           const updates = {};
-          updates[hourKey] = currentRanks;
+          if (latest < Number(hourKey)) {
+            updates[hourKey] = currentRanks;
+          } else {
+            Object.keys(missingNewChads).forEach(function(chadId) {
+              updates[hourKey + '/' + chadId] = missingNewChads[chadId];
+            });
+          }
 
           // Trzymaj maksymalnie 7 dni historii (168 snapshotów godzinowych).
           timestamps.slice(167).forEach(function(ts) {
@@ -1366,7 +1404,13 @@ const hallOfFameData = [
 
           await ref.update(updates);
 
-          rankHistoryCache[hourKey] = currentRanks;
+          if (latest < Number(hourKey)) {
+            rankHistoryCache[hourKey] = currentRanks;
+          } else {
+            if (!rankHistoryCache[hourKey]) rankHistoryCache[hourKey] = {};
+            Object.assign(rankHistoryCache[hourKey], missingNewChads);
+          }
+
           timestamps.slice(167).forEach(function(ts) {
             delete rankHistoryCache[ts];
           });
@@ -2154,6 +2198,9 @@ function deleteComment(postId, commentId) {
         renderRankings();
         setupPollUI();
         renderHallOfFame();
+        // Jeśli admin doda nowego Chada w trakcie bieżącej godziny,
+        // od razu zakładamy mu punkt odniesienia w historii ruchu.
+        refreshRankHistory();
       } catch (error) {
         console.error('[Firebase] /chads render ERROR:', error);
       }
